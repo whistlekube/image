@@ -43,8 +43,28 @@ cp /config/packages.list "${CHROOT_DIR}/packages.list"
 cp /scripts/configure-chroot.sh "${CHROOT_DIR}/configure-chroot.sh"
 chmod +x "${CHROOT_DIR}/configure-chroot.sh"
 
+# Mount essential filesystems for chroot
+mount -t proc proc "${CHROOT_DIR}/proc"
+mount -t sysfs sysfs "${CHROOT_DIR}/sys"
+mount --bind /dev "${CHROOT_DIR}/dev"
+mount --bind /dev/pts "${CHROOT_DIR}/dev/pts" || mkdir -p "${CHROOT_DIR}/dev/pts" && mount --bind /dev/pts "${CHROOT_DIR}/dev/pts"
+
+# Copy DNS resolver settings
+cp /etc/resolv.conf "${CHROOT_DIR}/etc/resolv.conf"
+
+# Make sure /dev/shm is properly set up for systemd
+if [ ! -d "${CHROOT_DIR}/dev/shm" ]; then mkdir -p "${CHROOT_DIR}/dev/shm"; fi
+mount -t tmpfs shm "${CHROOT_DIR}/dev/shm"
+
 # Execute the configuration script inside the chroot
-chroot "${CHROOT_DIR}" /configure-chroot.sh
+DEBIAN_FRONTEND=noninteractive chroot "${CHROOT_DIR}" /configure-chroot.sh
+
+# Unmount chroot file systems
+umount -l "${CHROOT_DIR}/dev/shm" || true
+umount -l "${CHROOT_DIR}/dev/pts" || true
+umount -l "${CHROOT_DIR}/dev" || true
+umount -l "${CHROOT_DIR}/sys" || true
+umount -l "${CHROOT_DIR}/proc" || true
 
 # Step 3: Create bootable ISO structure
 echo "[3/5] Creating bootable ISO structure..."
@@ -71,7 +91,7 @@ TIMEOUT 30
 DEFAULT install
 
 LABEL install
-  MENU LABEL Install Debian Minimal
+  MENU LABEL Install Whistlekube
   KERNEL /boot/vmlinuz
   APPEND initrd=/boot/initrd.img auto=true priority=critical preseed/file=/preseed/preseed.cfg quiet
 EOF

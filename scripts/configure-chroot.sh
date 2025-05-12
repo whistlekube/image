@@ -5,33 +5,57 @@ set -euo pipefail
 
 echo "Configuring minimal Debian system..."
 
+# Make sure we don't get prompted
+export DEBIAN_FRONTEND=noninteractive
+
+# Prevent services from starting during installation
+cat > /usr/sbin/policy-rc.d <<EOF
+#!/bin/sh
+exit 101
+EOF
+chmod +x /usr/sbin/policy-rc.d
+
+# To ensure apt doesn't hang waiting for input
+echo 'APT::Get::Assume-Yes "true";' > /etc/apt/apt.conf.d/90assumeyes
+echo 'APT::Install-Recommends "false";' > /etc/apt/apt.conf.d/90recommends
+echo 'APT::Install-Suggests "false";' > /etc/apt/apt.conf.d/90suggests
+echo 'Dpkg::Options {"--force-confnew";}' > /etc/apt/apt.conf.d/90dpkgoptions
+
 # Update package lists
-apt-get update
+echo "Updating package lists..."
+apt-get update -v
 
 # Install only the packages we need
-cat packages.list | xargs apt-get install -y --no-install-recommends
+echo "Installing packages..."
+xargs apt-get install -y --no-install-recommends < packages.list
 
 # Remove unnecessary packages
+echo "Removing unnecessary packages..."
 apt-get remove -y --purge installation-report tasksel tasksel-data
 apt-get autoremove -y --purge
 
 # Clean apt caches to reduce image size
+echo "Cleaning apt caches..."
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 
+echo "Cleaned apt caches"
+
 # Configure hostname
-echo "debian-minimal" > /etc/hostname
+echo "Configuring hostname..."
+echo "firewall" > /etc/hostname
+
 
 # Configure networking
-cat > /etc/network/interfaces << EOF
-# The loopback network interface
-auto lo
-iface lo inet loopback
-
-# The primary network interface
-allow-hotplug eth0
-iface eth0 inet dhcp
-EOF
+#cat > /etc/network/interfaces << EOF
+## The loopback network interface
+#auto lo
+#iface lo inet loopback
+#
+## The primary network interface
+#allow-hotplug eth0
+#iface eth0 inet dhcp
+#EOF
 
 # Set up root account (will be overridden by preseed in actual installation)
 echo "root:root" | chpasswd
@@ -62,6 +86,6 @@ ln -sf /usr/share/zoneinfo/UTC /etc/localtime
 echo "UTC" > /etc/timezone
 
 # Create /etc/resolv.conf
-echo "nameserver 8.8.8.8" > /etc/resolv.conf
+echo "nameserver 1.1.1.1" > /etc/resolv.conf
 
 echo "Chroot configuration complete."

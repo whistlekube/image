@@ -20,6 +20,7 @@ help:
 	@echo "                 based on Debian (builds Docker image if needed)"
 	@echo "  docker-build - Build the Docker image only"
 	@echo "  clean        - Remove output files and temporary data"
+	@echo "  shell        - Start an interactive shell in the Docker container"
 	@echo "  help         - Show this help message"
 
 # Build the full ISO via Docker
@@ -44,6 +45,7 @@ docker-build:
 clean:
 	@echo "Cleaning up..."
 	@rm -rf $(OUTPUT_DIR)
+	@docker rm -f $(IMAGE_NAME) 2>/dev/null || true
 	@docker rmi -f $(IMAGE_NAME) 2>/dev/null || true
 	@echo "Clean completed"
 
