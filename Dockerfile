@@ -31,9 +31,23 @@ RUN apt-get update && \
         systemd-container \
         xz-utils \
         file \
-        bzip2 && \
+        bzip2 \
+        less \
+        grub-common \
+        grub-efi-amd64-bin \
+        grub-pc-bin \
+        grub2-common && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Set environment variables to prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive \
+    DEBCONF_NONINTERACTIVE_SEEN=true \
+    PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Create a policy file to prevent services from starting in the container
+RUN echo "#!/bin/sh\nexit 101" > /usr/sbin/policy-rc.d && \
+    chmod +x /usr/sbin/policy-rc.d
 
 # Create directories for scripts, config, and output
 WORKDIR /build
