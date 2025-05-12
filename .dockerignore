@@ -1,0 +1,23 @@
+# Version control
+.git
+.gitignore
+
+# Output directory
+output/
+
+# Build artifacts
+*.iso
+*.img
+*.log
+*.tar*
+
+# Docker files (they're copied separately)
+docker/
+
+# Makefiles
+Makefile
+
+# Documentation
+README.md
+LICENSE
+*.md
