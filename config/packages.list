@@ -1,0 +1,15 @@
+# Standard Debian packages
+#standard
+
+# Additional packages required for your daemon or basic system
+# libnl-3-200
+# libnl-route-3-200
+# libyaml-cpp0.7
+
+# Useful debugging/system tools
+# htop
+# less
+# man-db
+# nano
+# curl
+# dnsutils
