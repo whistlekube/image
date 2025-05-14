@@ -1,5 +1,5 @@
 
-.PHONY: all build clean docker-build docker-run iso help
+.PHONY: all build clean docker-build docker-cleanall shell iso help
 
 # Configuration
 IMAGE_NAME := whistlekube-installer-builder
@@ -27,6 +27,7 @@ help:
 build: docker-build
 	@mkdir -p $(OUTPUT_DIR)
 	@echo "Building Debian minimal ISO..."
+	# Run docker with verbose output
 	@docker run --rm \
 		--privileged \
 		-v $(OUTPUT_DIR):/output \
@@ -39,7 +40,7 @@ build: docker-build
 # Build Docker image
 docker-build:
 	@echo "Building Docker image..."
-	@docker build -t $(IMAGE_NAME) -f Dockerfile .
+	@docker build --progress=plain -t $(IMAGE_NAME) -f Dockerfile .
 
 # Clean output and temporary files
 clean:
@@ -47,14 +48,32 @@ clean:
 	@rm -rf $(OUTPUT_DIR)
 	@docker rm -f $(IMAGE_NAME) 2>/dev/null || true
 	@docker rmi -f $(IMAGE_NAME) 2>/dev/null || true
+	@docker system prune -a -f --volumes 2>/dev/null || true
+	@echo "Clean completed"
+
+docker-cleanall:
+	@echo "Cleaning up all Docker images and containers..."
+	@docker rm -f $(IMAGE_NAME) 2>/dev/null || true
+	@docker rmi -f $(IMAGE_NAME) 2>/dev/null || true
+	@docker system prune -a -f --volumes 2>/dev/null || true
 	@echo "Clean completed"
 
 # Run an interactive shell in the Docker container
 shell: docker-build
+	@echo "Running interactive shell in Docker container..."
 	@mkdir -p $(OUTPUT_DIR)
+	
+	# Print docker command
+	@echo "docker run --rm -it \
+		--privileged \
+		-v $(OUTPUT_DIR):/output \
+		--name $(CONTAINER_NAME) \
+		$(IMAGE_NAME) \
+		/bin/sh"
+	# Run shell in container
 	@docker run --rm -it \
 		--privileged \
 		-v $(OUTPUT_DIR):/output \
 		--name $(CONTAINER_NAME) \
 		$(IMAGE_NAME) \
-		/bin/bash
+		/bin/sh
