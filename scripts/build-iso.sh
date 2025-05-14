@@ -24,9 +24,6 @@ echo "Architecture: ${DEBIAN_ARCH}"
 echo "Output Filename: ${ISO_FILENAME}"
 echo "======================================================"
 
-# Print chroot directory
-ls -lah "${CHROOT_DIR}"
-
 # Step 1: Configure chroot environment
 echo "[1/4] Configuring chroot environment..."
 # Mount essential filesystems for chroot
@@ -52,7 +49,6 @@ if [ ! -d "${CHROOT_DIR}/dev/shm" ]; then mkdir -p "${CHROOT_DIR}/dev/shm"; fi
 mount -t tmpfs shm "${CHROOT_DIR}/dev/shm"
 
 # Execute the configuration script inside the chroot
-ls -lah "${CHROOT_DIR}"
 DEBIAN_FRONTEND=noninteractive chroot "${CHROOT_DIR}" /bin/bash /configure-chroot.sh
 
 # Unmount chroot file systems
@@ -68,10 +64,29 @@ echo "[2/4] Creating bootable ISO structure..."
 mkdir -p "${ISO_DIR}"/{boot/{isolinux,grub},EFI/boot,install,preseed,live}
 
 # Copy kernel and initrd from chroot
-cp "${CHROOT_DIR}/boot/vmlinuz-"* "${ISO_DIR}/boot/vmlinuz"
-cp "${CHROOT_DIR}/boot/initrd.img-"* "${ISO_DIR}/boot/initrd.img"
+echo "Copying kernel and initrd files..."
+KERNEL_FILE=$(ls -1 "${CHROOT_DIR}/boot/vmlinuz-"* 2>/dev/null | head -n 1)
+INITRD_FILE=$(ls -1 "${CHROOT_DIR}/boot/initrd.img-"* 2>/dev/null | head -n 1)
 
-ls -lah "${ISO_DIR}/boot"
+if [ -z "$KERNEL_FILE" ] || [ -z "$INITRD_FILE" ]; then
+    echo "Error: Could not find kernel or initrd files in ${CHROOT_DIR}/boot/"
+    ls -la "${CHROOT_DIR}/boot/"
+    exit 1
+fi
+
+echo "Found kernel: $KERNEL_FILE"
+echo "Found initrd: $INITRD_FILE"
+
+cp "$KERNEL_FILE" "${ISO_DIR}/boot/vmlinuz"
+cp "$INITRD_FILE" "${ISO_DIR}/boot/initrd.img"
+
+# Verify the files were copied correctly
+if [ ! -f "${ISO_DIR}/boot/vmlinuz" ] || [ ! -f "${ISO_DIR}/boot/initrd.img" ]; then
+    echo "Error: Failed to copy kernel or initrd files to ISO directory"
+    exit 1
+fi
+
+echo "Kernel and initrd files copied successfully"
 
 # Copy isolinux files
 #cp /usr/lib/ISOLINUX/isolinux.bin "${ISO_DIR}/boot/isolinux/"
@@ -98,7 +113,7 @@ LABEL install
   MENU LABEL ^Install Whistlekube
   MENU DEFAULT
   KERNEL /boot/vmlinuz
-  APPEND initrd=/boot/initrd.img auto=true priority=critical preseed/file=/preseed/preseed.cfg quiet
+  APPEND initrd=/boot/initrd.img root=/dev/ram auto=true priority=critical preseed/file=/preseed/preseed.cfg quiet
 EOF
 
 # Create UEFI boot support
@@ -113,7 +128,7 @@ set timeout=30
 set default=0
 
 menuentry "Install Whistlekube" {
-    linux /boot/vmlinuz auto=true priority=critical preseed/file=/preseed/preseed.cfg quiet
+    linux /boot/vmlinuz root=/dev/ram auto=true priority=critical preseed/file=/preseed/preseed.cfg quiet
     initrd /boot/initrd.img
 }
 
@@ -325,4 +340,4 @@ echo "SHA256: $(cat ${OUTPUT_DIR}/${ISO_FILENAME}.sha256)"
 echo "======================================================"
 
 # Clean up
-/scripts/cleanup.sh "${WORK_DIR}"
+#/scripts/cleanup.sh "${WORK_DIR}"
