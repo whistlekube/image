@@ -1,5 +1,5 @@
 #!/bin/bash
-set -eauox pipefail
+set -eauox
 
 # This script contains the generic install script for the chroot environment
 # It is used to configure the chroot environment, install packages, and configure the system
@@ -16,16 +16,18 @@ ROOTFS_PATH="$1"
 INSTALL_SCRIPT_PATH="$2"
 
 # Setup mounts for the chroot environment
+mkdir -p "${ROOTFS_PATH}/proc"
 mount -t proc proc "${ROOTFS_PATH}/proc"
+mkdir -p "${ROOTFS_PATH}/sys"
 mount -t sysfs sysfs "${ROOTFS_PATH}/sys"
+mkdir -p "${ROOTFS_PATH}/dev"
 mount --bind /dev "${ROOTFS_PATH}/dev"
 mkdir -p "${ROOTFS_PATH}/dev/pts"
 mount --bind /dev/pts "${ROOTFS_PATH}/dev/pts"
 # Make sure /dev/shm is properly set up for systemd
+mkdir -p "${ROOTFS_PATH}/dev/shm"
 mount -t tmpfs shm "${ROOTFS_PATH}/dev/shm"
 
-### Common setup ###
-cp /etc/resolv.conf "${ROOTFS_PATH}/etc/resolv.conf"
 # Run the install script in the chroot
 chroot "${ROOTFS_PATH}" "${INSTALL_SCRIPT_PATH}"
 

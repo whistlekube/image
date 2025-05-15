@@ -3,31 +3,31 @@ set -eauox pipefail
 
 # This script runs within the chroot environment and does common setup tasks
 
+CHROOT_INSTALLER_DIR="${CHROOT_INSTALLER_DIR:-/whistlekube-chroot-installer}"
+
 # Make sure we don't get prompted
 export DEBIAN_FRONTEND=noninteractive
 
-# To ensure apt doesn't hang waiting for input
-echo 'APT::Get::Assume-Yes "true";' > /etc/apt/apt.conf.d/90assumeyes
-echo 'APT::Install-Recommends "false";' > /etc/apt/apt.conf.d/90recommends
-echo 'APT::Install-Suggests "false";' > /etc/apt/apt.conf.d/90suggests
-echo 'Dpkg::Options {"--force-confnew";}' > /etc/apt/apt.conf.d/90dpkgoptions
-
-# Update package lists
-echo "Updating package lists..."
-apt-get update -v
+# If the preinstall.sh script exists, run it
+if [ -f "${CHROOT_INSTALLER_DIR}/layer/preinstall.sh" ]; then
+    echo "Running preinstall.sh..."
+    "${CHROOT_INSTALLER_DIR}/layer/preinstall.sh"
+fi
 
 # Install only the packages we need
 echo "Installing packages..."
-xargs apt-get install -y --no-install-recommends < ./packages.list
+xargs apt-get install -y --no-install-recommends < "${CHROOT_INSTALLER_DIR}/layer/packages.list"
 
-# Remove unnecessary packages
-echo "Removing unnecessary packages..."
-apt-get remove -y --purge installation-report tasksel tasksel-data
-apt-get autoremove -y --purge
+# Apply overlay
+if [ -d "${CHROOT_INSTALLER_DIR}/layer/overlay" ]; then
+    echo "Applying overlay..."
+    cp -a "${CHROOT_INSTALLER_DIR}/layer/overlay"/* /
+fi
 
-# Clean apt caches to reduce image size
-echo "Cleaning apt caches..."
-apt-get clean
-rm -rf /var/lib/apt/lists/*
+# If the postinstall.sh script exists, run it
+if [ -f "${CHROOT_INSTALLER_DIR}/layer/postinstall.sh" ]; then
+    echo "Running postinstall.sh..."
+    "${CHROOT_INSTALLER_DIR}/layer/postinstall.sh"
+fi
 
 echo "Common setup done"

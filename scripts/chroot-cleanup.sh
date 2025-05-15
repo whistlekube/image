@@ -1,10 +1,10 @@
 #!/bin/bash
-set -euo pipefail
+set -euo
 
 # Remove unnecessary packages
 echo "Removing unnecessary packages..."
-apt-get remove -y --purge installation-report tasksel tasksel-data
-apt-get autoremove -y --purge
+apt-get remove -y --purge installation-report tasksel tasksel-data || true
+apt-get autoremove -y --purge || true
 
 # Clean apt caches to reduce image size
 echo "Cleaning apt caches..."

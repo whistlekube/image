@@ -73,16 +73,28 @@ cp /usr/lib/syslinux/modules/bios/{ldlinux.c32,libcom32.c32,libutil.c32,menu.c32
 
 # Create isolinux.cfg
 cat > "${ISO_DIR}/boot/isolinux/isolinux.cfg" << EOF
-UI menu.c32
+UI vesamenu.c32
 PROMPT 0
 TIMEOUT 30
 DEFAULT install
+
+MENU TITLE Whistlekube Installer
+MENU BACKGROUND /boot/isolinux/splash.png
+MENU COLOR title        * #FFFFFFFF *
+MENU COLOR border       * #00000000 #00000000 none
+MENU COLOR sel          * #ffffffff #76a1d0ff *
+MENU COLOR hotsel       1;7;37;40 #ffffffff #76a1d0ff *
+MENU COLOR tabmsg       * #ffffffff #00000000 *
+MENU COLOR help         37;40 #ffdddd00 #00000000 none
 
 LABEL install
   MENU LABEL ^Install Whistlekube
   MENU DEFAULT
   KERNEL /boot/vmlinuz
-  APPEND initrd=/boot/initrd.img quiet
+  APPEND initrd=/boot/initrd.img boot=live live-media-path=/live components quiet splash installer
+LABEL hd
+  MENU LABEL ^Boot from First Hard Disk
+  LOCALBOOT 0x80
 EOF
 
 # Create UEFI boot support
@@ -95,6 +107,20 @@ mkdir -p "${ISO_DIR}/boot/grub"
 cat > "${ISO_DIR}/boot/grub/grub.cfg" << EOF
 set timeout=30
 set default=0
+
+insmod all_video
+insmod gfxterm
+insmod png
+terminal_output gfxterm
+
+# Load theme and background
+if background_image /boot/grub/splash.png; then
+  set color_normal=white/black
+  set color_highlight=black/light-gray
+else
+  set menu_color_normal=cyan/blue
+  set menu_color_highlight=white/blue
+fi
 
 menuentry "Install Whistlekube" {
     linux /boot/vmlinuz root=/dev/ram auto=true priority=critical preseed/file=/preseed/preseed.cfg quiet
@@ -131,27 +157,29 @@ cp "${ISO_DIR}/EFI/boot/bootx64.efi" "${WORK_DIR}/bootx64.efi"
 # Create a FAT EFI system partition image
 echo "Creating EFI system partition image..."
 dd if=/dev/zero of="${WORK_DIR}/efi.img" bs=1M count=4
-mkfs.vfat "${WORK_DIR}/efi.img"
+mkfs.vfat "${GRUB_DIR}/efi.img"
+mmd -i "${GRUB_DIR}/efi.img" ::/EFI ::/EFI/boot
+mcopy -i "${GRUB_DIR}/efi.img" "${WORK_DIR}/bootx64.efi" ::/EFI/boot/
 
 # Mount the EFI image and copy the bootloader
-mkdir -p "${WORK_DIR}/mnt"
-mount "${WORK_DIR}/efi.img" "${WORK_DIR}/mnt" || {
-    echo "Error mounting EFI image. Using alternative method..."
-    # If mounting fails, use mtools instead
-    mmd -i "${WORK_DIR}/efi.img" ::/EFI
-    mmd -i "${WORK_DIR}/efi.img" ::/EFI/boot
-    mcopy -i "${WORK_DIR}/efi.img" "${WORK_DIR}/bootx64.efi" ::/EFI/boot/
-}
+#mkdir -p "${WORK_DIR}/mnt"
+#mount "${WORK_DIR}/efi.img" "${WORK_DIR}/mnt" || {
+#    echo "Error mounting EFI image. Using alternative method..."
+#    # If mounting fails, use mtools instead
+#    mmd -i "${WORK_DIR}/efi.img" ::/EFI
+#    mmd -i "${WORK_DIR}/efi.img" ::/EFI/boot
+#    mcopy -i "${WORK_DIR}/efi.img" "${WORK_DIR}/bootx64.efi" ::/EFI/boot/
+#}
 
 # Unmount if we mounted successfully
-if mountpoint -q "${WORK_DIR}/mnt"; then
-    mkdir -p "${WORK_DIR}/mnt/EFI/boot"
-    cp "${WORK_DIR}/bootx64.efi" "${WORK_DIR}/mnt/EFI/boot/"
-    umount "${WORK_DIR}/mnt"
-fi
+#if mountpoint -q "${WORK_DIR}/mnt"; then
+#    mkdir -p "${WORK_DIR}/mnt/EFI/boot"
+#    cp "${WORK_DIR}/bootx64.efi" "${WORK_DIR}/mnt/EFI/boot/"
+#    umount "${WORK_DIR}/mnt"
+#fi
 
 # Copy the EFI image
-cp "${WORK_DIR}/efi.img" "${ISO_DIR}/boot/grub/efi.img"
+#cp "${WORK_DIR}/efi.img" "${ISO_DIR}/boot/grub/efi.img"
 
 # Add the Debian archives keyring
 mkdir -p "${ISO_DIR}/keyring"
@@ -226,8 +254,8 @@ cp "${LIVE_CHROOT_DIR}/usr/share/keyrings/debian-archive-keyring.gpg" "${ISO_DIR
 
 # Step 4: Create squashfs of the chroot
 echo "[3/4] Creating squashfs of the chroots..."
-mksquashfs "${LIVE_CHROOT_DIR}" "${ISO_DIR}/install/live.squashfs" -comp xz -wildcards
-mksquashfs "${TARGET_CHROOT_DIR}" "${ISO_DIR}/install/target.squashfs" -comp xz -wildcards
+mksquashfs "${LIVE_CHROOT_DIR}" "${ISO_DIR}/live/filesystem.squashfs" -comp xz -wildcards
+mksquashfs "${TARGET_CHROOT_DIR}" "${ISO_DIR}/live/target.squashfs" -comp xz -wildcards
 
 # Step 5: Generate the ISO
 echo "[4/4] Generating the ISO..."

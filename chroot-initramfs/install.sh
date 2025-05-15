@@ -1,11 +1,8 @@
-#!/bin/bash
 set -euo pipefail
 
-# This script runs inside the chroot to configure the installer system
+# This script runs inside the chroot to configure the initramfs builder system
 
-CHROOT_INSTALLER_DIR="${CHROOT_INSTALLER_DIR:-/whistlekube-chroot-installer}"
-
-echo "Configuring WhistleKube Installer system within chroot environment..."
+echo "Configuring WhistleKube initramfs builder within chroot environment..."
 
 # Make sure we don't get prompted
 export DEBIAN_FRONTEND=noninteractive
@@ -19,7 +16,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 # Install packages
 echo "Installing packages..."
-xargs apt-get install -y --no-install-recommends < "${CHROOT_INSTALLER_DIR}/layer/packages.list"
+xargs apt-get install -y --no-install-recommends < ./packages.list
 
 # Apply overlay
 echo "Applying overlay..."
@@ -36,6 +33,9 @@ cp -r /overlay/* /
 #iface eth0 inet dhcp
 #EOF
 
+# Set up root account (will be overridden by preseed in actual installation)
+echo "root:whistlekube" | chpasswd
+
 # Create a minimal fstab
 cat > /etc/fstab << EOF
 # /etc/fstab: static file system information
@@ -44,7 +44,7 @@ EOF
 
 # Build initramfs
 echo "Building initramfs..."
-#update-initramfs -c -k $(uname -r)
+update-initramfs -c -k $(uname -r)
 
 # Set up locales for en_US.UTF-8
 #echo "locales locales/default_environment_locale select en_US.UTF-8" | debconf-set-selections
@@ -52,3 +52,12 @@ echo "Building initramfs..."
 #rm -f /etc/locale.gen
 #echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
 #locale-gen
+
+# Set timezone to UTC
+ln -sf /usr/share/zoneinfo/UTC /etc/localtime
+echo "UTC" > /etc/timezone
+
+# Create /etc/resolv.conf
+echo "nameserver 1.1.1.1" > /etc/resolv.conf
+
+echo "Chroot configuration complete."

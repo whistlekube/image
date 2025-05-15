@@ -4,9 +4,7 @@ linux-image-amd64
 grub-pc
 locales
 tzdata
-bash
-less
+dash
 passwd
 apt
-zstd
 ca-certificates
