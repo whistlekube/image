@@ -5,6 +5,8 @@ echo "************************************************************"
 echo "Whistlekube Installer"
 echo "************************************************************"
 
+dialog --msgbox "Welcome to the Whistlekube Installer!\n\nThis is where your installation logic would go.\n\n- Partitioning\n- Formatting\n- Copying target.squashfs\n- Installing GRUB to target" 15 60
+
 # Define paths
 CDROM_MOUNT="/cdrom"  # live-boot typically mounts the installation media here
 TARGET_SQUASHFS="${CDROM_MOUNT}/live/target.squashfs"

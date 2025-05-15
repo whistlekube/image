@@ -3,7 +3,7 @@
 
 # Configuration
 IMAGE_NAME := whistlekube-installer
-OUTPUT_DIR := $(shell pwd)/output
+OUTPUT_DIR := $(shell pwd)/build
 ISO_FILENAME := whistlekube-installer.iso
 BUILD_VERSION := $(shell date +%Y%m%d)
 

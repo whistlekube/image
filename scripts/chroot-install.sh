@@ -8,6 +8,8 @@ CHROOT_INSTALLER_DIR="${CHROOT_INSTALLER_DIR:-/whistlekube-chroot-installer}"
 # Make sure we don't get prompted
 export DEBIAN_FRONTEND=noninteractive
 
+export OUTPUT_DIR=${OUTPUT_DIR:-/output}
+
 # If the preinstall.sh script exists, run it
 if [ -f "${CHROOT_INSTALLER_DIR}/layer/preinstall.sh" ]; then
     echo "Running preinstall.sh..."
