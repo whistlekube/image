@@ -74,5 +74,4 @@ shell: docker-build
 		--privileged \
 		-v $(OUTPUT_DIR):/output \
 		-t $(IMAGE_NAME)-$(BUILD_TARGET) \
-		$(IMAGE_NAME) \
 		/bin/bash

@@ -1,10 +1,7 @@
-systemd
-systemd-sysv
+zstd
 linux-image-amd64
-grub-pc
+systemd-sysv
 locales
 tzdata
-dash
 passwd
-apt
 ca-certificates

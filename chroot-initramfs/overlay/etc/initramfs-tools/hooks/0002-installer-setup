@@ -28,9 +28,8 @@ if grep -q "boot=live.*installer" /proc/cmdline; then
 #!/bin/sh
 # Auto-launch installer on login
 if [ "$(id -u)" = "0" ]; then
-  echo "Starting firewall installer..."
-  cd /usr/lib/firewall-installer
-  ./installer.sh
+  echo "Starting whistlekube installer..."
+  /usr/local/bin/whistlekube-installer.sh
 fi
 INSTALLER
   chmod +x /etc/profile.d/installer.sh

@@ -13,7 +13,7 @@ esac
 # Source live-boot functions
 . /scripts/live-functions
 
-log_begin_msg "Setting up firewall installer environment"
+log_begin_msg "Setting up whistlekube installer environment"
 
 # Copy our setup script to the live filesystem
 if [ -d /root/live/filesystem/etc/profile.d ]; then

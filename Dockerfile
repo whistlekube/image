@@ -259,7 +259,7 @@ RUN echo "Listing contents of ${ISO_DIR}:" && \
         -isohybrid-mbr "${ISO_DIR}/boot/isolinux/isohdpfx.bin" \
         -b boot/isolinux/isolinux.bin \
         -c boot/isolinux/boot.cat \
-        -boot-load-size 4 -boot-info-table -no-emul-boot \
+        -no-emul-boot -boot-load-size 4 -boot-info-table \
         -eltorito-alt-boot \
         -append_partition 2 0xef "${ISO_DIR}/EFI/boot/efi.img" \
         -e EFI/boot/efi.img \

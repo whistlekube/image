@@ -1,0 +1,17 @@
+[Unit]
+Description=Whistlekube Installer
+After=systemd-user-sessions.service getty@tty1.service multi-user.target
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/whistlekube-installer
+StandardInput=tty-force
+StandardOutput=inherit
+StandardError=inherit
+TTYPath=/dev/tty1
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
+EOF
