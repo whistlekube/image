@@ -14,9 +14,9 @@ mount none -t devpts /dev/pts
 apt-get update
 apt-get install -y --no-install-recommends \
     linux-image-amd64 \
-    grub-pc \
-    grub-efi-amd64 \
-    systemd-sysv
+    grub-common \
+    systemd-sysv \
+    locales \
 
 # Configure locale
 locale-gen
