@@ -1,0 +1,25 @@
+#!/bin/sh
+PREREQ=""
+prereqs() {
+   echo "$PREREQ"
+}
+case $1 in
+prereqs)
+   prereqs
+   exit 0
+   ;;
+esac
+
+# Source live-boot functions
+. /scripts/live-functions
+
+log_begin_msg "Setting up firewall installer environment"
+
+# Copy our setup script to the live filesystem
+if [ -d /root/live/filesystem/etc/profile.d ]; then
+  # Copy our setup script to run after boot
+  cp /lib/live-installer/setup.sh /root/live/filesystem/etc/rc.local
+  chmod +x /root/live/filesystem/etc/rc.local
+fi
+
+log_end_msg

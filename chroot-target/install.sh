@@ -3,52 +3,11 @@ set -euo pipefail
 
 # This script runs inside the chroot to configure the minimal system
 
-echo "Configuring minimal Debian system..."
-
-# Make sure we don't get prompted
-export DEBIAN_FRONTEND=noninteractive
-
-# To ensure apt doesn't hang waiting for input
-echo 'APT::Get::Assume-Yes "true";' > /etc/apt/apt.conf.d/90assumeyes
-echo 'APT::Install-Recommends "false";' > /etc/apt/apt.conf.d/90recommends
-echo 'APT::Install-Suggests "false";' > /etc/apt/apt.conf.d/90suggests
-echo 'Dpkg::Options {"--force-confnew";}' > /etc/apt/apt.conf.d/90dpkgoptions
-
-# Update package lists
-echo "Updating package lists..."
-apt-get update -v
-
-# Install only the packages we need
-echo "Installing packages..."
-xargs apt-get install -y --no-install-recommends \
-    systemd \
-    systemd-sysv \
-    linux-image-amd64 \
-    grub-pc \
-    locales \
-    tzdata \
-    bash \
-    less \
-    passwd
-    apt \
-    ca-certificates
-
-# Remove unnecessary packages
-echo "Removing unnecessary packages..."
-apt-get remove -y --purge installation-report tasksel tasksel-data
-apt-get autoremove -y --purge
-
-# Clean apt caches to reduce image size
-echo "Cleaning apt caches..."
-apt-get clean
-rm -rf /var/lib/apt/lists/*
-
-echo "Cleaned apt caches"
+echo "Configuring WhistleKube Debian system within chroot environment..."
 
 # Configure hostname
-echo "Configuring hostname..."
-echo "firewall" > /etc/hostname
-
+#echo "Configuring hostname..."
+#echo "firewall" > /etc/hostname
 
 # Configure networking
 #cat > /etc/network/interfaces << EOF
@@ -62,13 +21,12 @@ echo "firewall" > /etc/hostname
 #EOF
 
 # Set up root account (will be overridden by preseed in actual installation)
-echo "root:root" | chpasswd
+echo "root:whistlekube" | chpasswd
 
 # Enable systemd as the init system
 mkdir -p /etc/systemd/system/default.target.wants/
 
 # Disable unnecessary systemd services
-systemctl disable systemd-timesyncd.service || true
 systemctl disable systemd-resolved.service || true
 systemctl disable systemd-networkd.service || true
 

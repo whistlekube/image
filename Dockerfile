@@ -17,6 +17,11 @@ LABEL org.opencontainers.image.authors="Joe Kramer <joe@whistlekube.com>"
 LABEL org.opencontainers.image.source="https://github.com/whistlekube/image"
 
 # Set environment variables
+ENV WORK_DIR=/build
+ENV ISO_DIR="${WORK_DIR}/iso"
+ENV LIVE_CHROOT_DIR="${WORK_DIR}/live-rootfs"
+ENV TARGET_CHROOT_DIR="${WORK_DIR}/target-rootfs"
+
 ENV DEBIAN_FRONTEND=noninteractive
 ENV DEBCONF_NONINTERACTIVE_SEEN=true
 ENV DEBIAN_ARCH="${TARGETARCH}"
@@ -44,6 +49,9 @@ RUN apt-get update && \
         file \
         bzip2 \
         lsof \
+        live-boot \
+        live-boot-initramfs-tools \
+        initramfs-tools \
         procps \
         psmisc \
         strace \
@@ -60,24 +68,17 @@ RUN apt-get update && \
         gdisk && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
-    mkdir -p /output /build/chroot   
+    mkdir -p /output /build/live-rootfs /build/target-rootfs
 
-WORKDIR /build
+WORKDIR ${WORK_DIR}
 
 # Run debootstrap to create the minimal Debian system
 # This will be cached by Docker for future builds
 RUN echo "=== Debootstraping target rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
     debootstrap --arch="${DEBIAN_ARCH}" \
                 --variant=minbase \
-                --include=systemd,systemd-sysv,dash,coreutils,util-linux \
                 "${DEBIAN_RELEASE}" \
-                ./target-rootfs \
-                "${DEBIAN_MIRROR}" && \
-    echo "=== Debootstraping live rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
-    debootstrap --arch="${DEBIAN_ARCH}" \
-                --variant=minbase \
-                "${DEBIAN_RELEASE}" \
-                ./live-rootfs \
+                ${TARGET_CHROOT_DIR} \
                 "${DEBIAN_MIRROR}" && \
     echo "=== Debootstrap DONE ==="
 
@@ -94,50 +95,34 @@ RUN echo "=== Debootstraping target rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEAS
 ##    chmod +x /build/chroot/usr/sbin/policy-rc.d
 
 # Setup target chroot environment, run configure-chroot.sh, and clean up
-COPY /chroot-target/install.sh /build/target-rootfs/install.sh
-COPY /scripts/chroot-install.sh /build/chroot-install.sh
+COPY /scripts/run-chroot.sh ./run-chroot.sh
+COPY /chroot-target/packages.list "${TARGET_CHROOT_DIR}/packages.list"
+COPY /chroot-target/base-install.sh "${TARGET_CHROOT_DIR}/base-install.sh"
+COPY /scripts/chroot-cleanup.sh "${TARGET_CHROOT_DIR}/cleanup.sh"
+RUN --security=insecure \
+    echo "=== Configuring base chroot for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
+    cp /etc/resolv.conf "${TARGET_CHROOT_DIR}/etc/resolv.conf" && \
+    ./run-chroot.sh "${TARGET_CHROOT_DIR}" "/base-install.sh" && \
+    rm "${TARGET_CHROOT_DIR}/base-install.sh" && \
+    rm "${TARGET_CHROOT_DIR}/packages.list" && \
+    cp -r "${TARGET_CHROOT_DIR}" "${LIVE_CHROOT_DIR}"
+
+COPY /chroot-target/install.sh "${TARGET_CHROOT_DIR}/install.sh"
 RUN --security=insecure \
     echo "=== Configuring target chroot for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
-    mount -t proc proc target-rootfs/proc && \
-    mount -t sysfs sysfs target-rootfs/sys && \
-    mount --bind /dev target-rootfs/dev && \
-    mkdir -p target-rootfs/dev/pts && \
-    mount --bind /dev/pts target-rootfs/dev/pts && \
-    mount -t tmpfs shm target-rootfs/dev/shm && \
-    cp /etc/resolv.conf target-rootfs/etc/resolv.conf && \
-    cp /scripts/configure-chroot.sh target-rootfs/configure-chroot.sh && \
-    chmod +x target-rootfs/configure-chroot.sh && \
-    chroot target-rootfs /configure-chroot.sh || true && \
-    rm -f target-rootfs/configure-chroot.sh && \
-    umount -l target-rootfs/dev/shm && \
-    umount -l target-rootfs/dev/pts && \
-    umount -l target-rootfs/dev && \
-    umount -l target-rootfs/sys && \
-    umount -l target-rootfs/proc && \
-    echo "=== Chroot configured ==="
-
+    cp /etc/resolv.conf "${TARGET_CHROOT_DIR}/etc/resolv.conf" && \
+    ./run-chroot.sh "${TARGET_CHROOT_DIR}" "/install.sh" && \
+    rm "${TARGET_CHROOT_DIR}/install.sh" && \
+    ./run-chroot.sh "${TARGET_CHROOT_DIR}" "/cleanup.sh"
 
 # Setup live chroot environment, run configure-chroot.sh, and clean up
-COPY /chroot-live/ /build/live-rootfs/
+COPY /chroot-live/install.sh "${LIVE_CHROOT_DIR}/install.sh"
 RUN --security=insecure \
     echo "=== Configuring live chroot for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
-    mkdir -p 
-    mount -t proc proc /build/live-rootfs/proc && \
-    mount -t sysfs sysfs /build/live-rootfs/sys && \
-    mount --bind /dev /build/live-rootfs/dev && \
-    mkdir -p /build/live-rootfs/dev/pts && \
-    mount --bind /dev/pts /build/live-rootfs/dev/pts && \
-    mount -t tmpfs shm /build/live-rootfs/dev/shm && \
-    cp /etc/resolv.conf /build/live-rootfs/etc/resolv.conf && \
-    cp /scripts/configure-chroot.sh /build/live-rootfs/configure-chroot.sh && \
-    chmod +x /build/live-rootfs/configure-chroot.sh && \
-    chroot /build/live-rootfs /configure-chroot.sh || true && \
-    rm -f /build/live-rootfs/configure-chroot.sh && \
-    umount -l /build/live-rootfs/dev/shm && \
-    umount -l /build/live-rootfs/dev/pts && \
-    umount -l /build/live-rootfs/dev && \
-    umount -l /build/live-rootfs/sys && \
-    umount -l /build/live-rootfs/proc && \
+    cp /etc/resolv.conf "${LIVE_CHROOT_DIR}/etc/resolv.conf" && \
+    ./run-chroot.sh "${LIVE_CHROOT_DIR}" "/install.sh" && \
+    rm "${LIVE_CHROOT_DIR}/install.sh" && \
+    ./run-chroot.sh "${LIVE_CHROOT_DIR}" "/cleanup.sh" && \
     echo "=== Chroot configured ==="
 
 # Stage 2: Final build environment
@@ -153,72 +138,14 @@ RUN --security=insecure \
 #COPY config/ /config/
 
 # Build the ISO
-RUN cp /build/live-rootfs/boot/vmlinuz-* /build/vmlinuz && \
-    cp /build/live-rootfs/boot/initrd.img-* /build/initrd.img
+COPY /scripts/build-iso.sh ./build-iso.sh
+RUN ./build-iso.sh
 
 # Set entrypoint to the build script
-ENTRYPOINT ["/scripts/build-iso.sh"]
+#ENTRYPOINT ["/scripts/build-iso.sh"]
 
 # Default command (can be overridden)
-CMD ["BUILD_VERSION=latest", "ISO_FILENAME=whistlekube-installer.iso"]
-
+#CMD ["BUILD_VERSION=latest", "ISO_FILENAME=whistlekube-installer.iso"]
 
 FROM scratch AS artifact
-COPY --from=builder /output/whistlekube-installer.iso /whistlekube-installer.iso
-
-## RUN mkdir -p /scripts /config /output
-## 
-## 
-## # Install required packages in a single RUN instruction to reduce layers
-## RUN apt-get update && \
-##     apt-get install -y --no-install-recommends \
-##         debootstrap \
-##         xorriso \
-##         isolinux \
-##         syslinux-common \
-##         syslinux-utils \
-##         cpio \
-##         genisoimage \
-##         dosfstools \
-##         squashfs-tools \
-##         mtools \
-##         binutils \
-##         ca-certificates \
-##         curl \
-##         gnupg \
-##         rsync \
-##         sudo \
-##         systemd-container \
-##         xz-utils \
-##         file \
-##         bzip2 \
-##         less \
-##         grub-common \
-##         grub-efi-amd64-bin \
-##         grub-pc-bin \
-##         grub2-common \
-##         kpartx \
-##         parted \
-##         gdisk && \
-##     apt-get clean && \
-##     rm -rf /var/lib/apt/lists/*
-## 
-## # Create a policy file to prevent services from starting in the container
-## RUN echo "#!/bin/sh\nexit 101" > /usr/sbin/policy-rc.d && \
-##     chmod +x /usr/sbin/policy-rc.d
-## 
-## # Copy scripts and configuration files
-## COPY scripts/ /scripts/
-## COPY config/ /config/
-## 
-## # Make scripts executable
-## RUN chmod +x /scripts/*.sh
-## 
-## # Run debootstrap to create a minimal Debian system
-## RUN debootstrap --arch=amd64 --variant=minbase --include=systemd-sysv trixie /build/chroot http://deb.debian.org/debian
-## 
-## # Set entrypoint to the build script
-## ENTRYPOINT ["/scripts/build-iso.sh"]
-## 
-## # Default command (can be overridden)
-## CMD ["BUILD_VERSION=latest", "ISO_FILENAME=whistlekube-installer.iso"]
+COPY --from=builder /build/iso/whistlekube-installer.iso /whistlekube-installer.iso

@@ -1,9 +1,8 @@
 
-.PHONY: all build clean docker-build docker-buildx-enable docker-cleanall shell iso help
+.PHONY: all build clean docker-build docker-buildx-enable shell iso help
 
 # Configuration
-IMAGE_NAME := whistlekube-installer-builder
-CONTAINER_NAME := whistlekube-installer-builder
+IMAGE_NAME := whistlekube-installer
 OUTPUT_DIR := $(shell pwd)/output
 ISO_FILENAME := whistlekube-installer.iso
 BUILD_VERSION := $(shell date +%Y%m%d)
@@ -25,21 +24,24 @@ help:
 # Build the full ISO via Docker
 build: docker-build
 	@mkdir -p $(OUTPUT_DIR)
-	@echo "Building Debian minimal ISO..."
-	# Run docker with verbose output
-	@docker run --rm \
-		--privileged \
-		-v $(OUTPUT_DIR):/output \
-		--name $(CONTAINER_NAME) \
-		$(IMAGE_NAME) \
-		BUILD_VERSION=$(BUILD_VERSION) \
-		ISO_FILENAME=$(ISO_FILENAME)
+	@echo "Building Installer ISO..."
+	@docker buildx build \
+	    --allow security.insecure \
+		--output type=local,dest=$(OUTPUT_DIR) \
+		--progress=plain \
+		-t $(IMAGE_NAME) \
+		.
 	@echo "ISO has been created at $(OUTPUT_DIR)/$(ISO_FILENAME)"
 
 # Build Docker image
 docker-build:
-	@echo "Building Docker image..."
-	@docker buildx build --allow security.insecure --progress=plain -t $(IMAGE_NAME) -f Dockerfile .
+	@echo "Building Installer ISO..."
+	@docker buildx build --load \
+	    --allow security.insecure \
+		--target builder \
+		--progress=plain \
+		-t $(IMAGE_NAME)-builder \
+		.
 
 # Create a new buildx builder with insecure options
 docker-buildx-enable:
@@ -55,32 +57,19 @@ clean:
 	@rm -rf $(OUTPUT_DIR)
 	@docker rm -f $(IMAGE_NAME) || true
 	@docker rmi -f $(IMAGE_NAME) || true
+	@docker rmi -f $(IMAGE_NAME)-builder || true
 	@docker system prune -a -f --volumes || true
-	@echo "Clean completed"
-
-docker-cleanall:
-	@echo "Cleaning up all Docker images and containers..."
-	@docker rm -f $(IMAGE_NAME) || true
-	@docker rmi -f $(IMAGE_NAME) || true
-	@docker system prune -a -f --volumes || true
+	@docker buildx prune --all || true
 	@echo "Clean completed"
 
 # Run an interactive shell in the Docker container
 shell: docker-build
 	@echo "Running interactive shell in Docker container..."
 	@mkdir -p $(OUTPUT_DIR)
-	
-	# Print docker command
-	@echo "docker run --rm -it \
-		--privileged \
-		-v $(OUTPUT_DIR):/output \
-		--name $(CONTAINER_NAME) \
-		$(IMAGE_NAME) \
-		/bin/sh"
 	# Run shell in container
 	@docker run --rm -it \
 		--privileged \
 		-v $(OUTPUT_DIR):/output \
-		--name $(CONTAINER_NAME) \
+		-t $(IMAGE_NAME)-builder \
 		$(IMAGE_NAME) \
-		/bin/sh
+		/bin/bash

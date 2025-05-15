@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -eauox pipefail
 
 # Default values (can be overridden by environment variables)
 BUILD_VERSION=${BUILD_VERSION:-"$(date +%Y%m%d)"}
@@ -8,12 +8,14 @@ DEBIAN_RELEASE=${DEBIAN_RELEASE:-"trixie"}
 DEBIAN_ARCH=${DEBIAN_ARCH:-"amd64"}
 
 # Directories
-WORK_DIR="/build"
-CHROOT_DIR="${WORK_DIR}/chroot"
-ISO_DIR="${WORK_DIR}/iso"
-OUTPUT_DIR="/output"
-
-mkdir -p "${OUTPUT_DIR}"
+WORK_DIR="${WORK_DIR:-$(pwd)}"
+LIVE_CHROOT_DIR="${LIVE_CHROOT_DIR:-${WORK_DIR}/live-rootfs}"
+TARGET_CHROOT_DIR="${TARGET_CHROOT_DIR:-${WORK_DIR}/target-rootfs}"
+ISO_DIR="${ISO_DIR:-${WORK_DIR}/iso}"
+BOOT_DIR=${ISO_DIR}/boot
+GRUB_DIR=${BOOT_DIR}/grub
+ISOLINUX_DIR=${BOOT_DIR}/isolinux
+EFI_DIR=${ISO_DIR}/EFI
 
 echo "======================================================"
 echo "Building Whistlekube Installer ISO"
@@ -21,56 +23,31 @@ echo "======================================================"
 echo "Build Version: ${BUILD_VERSION}"
 echo "Debian Release: ${DEBIAN_RELEASE}"
 echo "Architecture: ${DEBIAN_ARCH}"
-echo "Output Filename: ${ISO_FILENAME}"
+echo "Work dir: ${WORK_DIR}"
+echo "Live chroot dir: ${LIVE_CHROOT_DIR}"
+echo "ISO dir: ${ISO_DIR}"
 echo "======================================================"
 
-# Step 1: Configure chroot environment
-echo "[1/4] Configuring chroot environment..."
-# Mount essential filesystems for chroot
-mkdir -p "${CHROOT_DIR}/proc"
-mkdir -p "${CHROOT_DIR}/sys"
-mkdir -p "${CHROOT_DIR}/dev"
-mkdir -p "${CHROOT_DIR}/dev/pts"
-mount -t proc proc "${CHROOT_DIR}/proc"
-mount -t sysfs sysfs "${CHROOT_DIR}/sys"
-mount --bind /dev "${CHROOT_DIR}/dev"
-mount --bind /dev/pts "${CHROOT_DIR}/dev/pts"
-
-cp /config/packages.list "${CHROOT_DIR}/packages.list"
-cp /scripts/configure-chroot.sh "${CHROOT_DIR}/configure-chroot.sh"
-chmod +x "${CHROOT_DIR}/configure-chroot.sh"
-
-# Copy DNS resolver settings
-mkdir -p "${CHROOT_DIR}/etc"
-cp /etc/resolv.conf "${CHROOT_DIR}/etc/resolv.conf"
-
-# Make sure /dev/shm is properly set up for systemd
-if [ ! -d "${CHROOT_DIR}/dev/shm" ]; then mkdir -p "${CHROOT_DIR}/dev/shm"; fi
-mount -t tmpfs shm "${CHROOT_DIR}/dev/shm"
-
-# Execute the configuration script inside the chroot
-DEBIAN_FRONTEND=noninteractive chroot "${CHROOT_DIR}" /bin/bash /configure-chroot.sh
-
-# Unmount chroot file systems
-umount -l "${CHROOT_DIR}/dev/shm" || true
-umount -l "${CHROOT_DIR}/dev/pts" || true
-umount -l "${CHROOT_DIR}/dev" || true
-umount -l "${CHROOT_DIR}/sys" || true
-umount -l "${CHROOT_DIR}/proc" || true
-
-
-# Step 2: Create bootable ISO structure
-echo "[2/4] Creating bootable ISO structure..."
+# Create bootable ISO directory structure
 mkdir -p "${ISO_DIR}"/{boot/{isolinux,grub},EFI/boot,install,preseed,live}
+
+if [ -d "${LIVE_CHROOT_DIR}" ]; then
+    echo "Listing contents of live chroot directory:"
+    ls -la "${LIVE_CHROOT_DIR}"
+else
+    echo "Error: Live chroot directory does not exist at ${LIVE_CHROOT_DIR}"
+    exit 1
+fi
 
 # Copy kernel and initrd from chroot
 echo "Copying kernel and initrd files..."
-KERNEL_FILE=$(ls -1 "${CHROOT_DIR}/boot/vmlinuz-"* 2>/dev/null | head -n 1)
-INITRD_FILE=$(ls -1 "${CHROOT_DIR}/boot/initrd.img-"* 2>/dev/null | head -n 1)
+ls -la "${LIVE_CHROOT_DIR}/boot/"
+KERNEL_FILE=$(ls -1 "${LIVE_CHROOT_DIR}/boot/vmlinuz-"* 2>/dev/null | head -n 1)
+INITRD_FILE=$(ls -1 "${LIVE_CHROOT_DIR}/boot/initrd.img-"* 2>/dev/null | head -n 1)
 
 if [ -z "$KERNEL_FILE" ] || [ -z "$INITRD_FILE" ]; then
-    echo "Error: Could not find kernel or initrd files in ${CHROOT_DIR}/boot/"
-    ls -la "${CHROOT_DIR}/boot/"
+    echo "Error: Could not find kernel or initrd files in ${LIVE_CHROOT_DIR}/boot/"
+    ls -la "${LIVE_CHROOT_DIR}/boot/"
     exit 1
 fi
 
@@ -88,23 +65,15 @@ fi
 
 echo "Kernel and initrd files copied successfully"
 
-# Copy isolinux files
-#cp /usr/lib/ISOLINUX/isolinux.bin "${ISO_DIR}/boot/isolinux/"
-#cp /usr/lib/syslinux/modules/bios/ldlinux.c32 "${ISO_DIR}/boot/isolinux/"
-#cp /usr/lib/syslinux/modules/bios/libcom32.c32 "${ISO_DIR}/boot/isolinux/"
-#cp /usr/lib/syslinux/modules/bios/libutil.c32 "${ISO_DIR}/boot/isolinux/"
-#cp /usr/lib/syslinux/modules/bios/menu.c32 "${ISO_DIR}/boot/isolinux/"
-
 # Copy isolinux files for BIOS boot
 echo "Setting up BIOS boot..."
 cp /usr/lib/ISOLINUX/isolinux.bin "${ISO_DIR}/boot/isolinux/"
 cp /usr/lib/ISOLINUX/isohdpfx.bin "${WORK_DIR}/isohdpfx.bin"
 cp /usr/lib/syslinux/modules/bios/{ldlinux.c32,libcom32.c32,libutil.c32,menu.c32,vesamenu.c32} "${ISO_DIR}/boot/isolinux/"
 
-
 # Create isolinux.cfg
 cat > "${ISO_DIR}/boot/isolinux/isolinux.cfg" << EOF
-UI vesamenu.c32
+UI menu.c32
 PROMPT 0
 TIMEOUT 30
 DEFAULT install
@@ -113,7 +82,7 @@ LABEL install
   MENU LABEL ^Install Whistlekube
   MENU DEFAULT
   KERNEL /boot/vmlinuz
-  APPEND initrd=/boot/initrd.img root=/dev/ram auto=true priority=critical preseed/file=/preseed/preseed.cfg quiet
+  APPEND initrd=/boot/initrd.img quiet
 EOF
 
 # Create UEFI boot support
@@ -186,7 +155,7 @@ cp "${WORK_DIR}/efi.img" "${ISO_DIR}/boot/grub/efi.img"
 
 # Add the Debian archives keyring
 mkdir -p "${ISO_DIR}/keyring"
-cp "${CHROOT_DIR}/usr/share/keyrings/debian-archive-keyring.gpg" "${ISO_DIR}/keyring/" 2>/dev/null || true
+cp "${LIVE_CHROOT_DIR}/usr/share/keyrings/debian-archive-keyring.gpg" "${ISO_DIR}/keyring/" 2>/dev/null || true
 
 
 ## # Create EFI directory structure directly
@@ -253,11 +222,12 @@ cp "${CHROOT_DIR}/usr/share/keyrings/debian-archive-keyring.gpg" "${ISO_DIR}/key
 ## cp /usr/lib/grub/x86_64-efi/grubx64.efi "${ISO_DIR}/EFI/boot/bootx64.efi"
 
 # Copy preseed file
-cp /config/preseed.cfg "${ISO_DIR}/preseed/"
+# cp /config/preseed.cfg "${ISO_DIR}/preseed/"
 
 # Step 4: Create squashfs of the chroot
-echo "[3/4] Creating squashfs of the chroot..."
-mksquashfs "${CHROOT_DIR}" "${ISO_DIR}/install/filesystem.squashfs" -comp xz -wildcards
+echo "[3/4] Creating squashfs of the chroots..."
+mksquashfs "${LIVE_CHROOT_DIR}" "${ISO_DIR}/install/live.squashfs" -comp xz -wildcards
+mksquashfs "${TARGET_CHROOT_DIR}" "${ISO_DIR}/install/target.squashfs" -comp xz -wildcards
 
 # Step 5: Generate the ISO
 echo "[4/4] Generating the ISO..."
@@ -286,16 +256,14 @@ XORRISO_OPTS+=" -partition_offset 16"
 XORRISO_OPTS+=" -append_partition 2 0xEF ${WORK_DIR}/efi.img"
 
 # Output file and source directory
-XORRISO_OPTS+=" -o ${OUTPUT_DIR}/${ISO_FILENAME} ${ISO_DIR}"
+XORRISO_OPTS+=" -o ${ISO_DIR}/${ISO_FILENAME} ${ISO_DIR}"
 
 # Execute xorriso with all options
 eval xorriso ${XORRISO_OPTS}
 
 # Post-process the ISO to make it hybrid
-if command -v isohybrid >/dev/null 2>&1; then
-    echo "Running isohybrid to finalize USB bootability..."
-    isohybrid --uefi "${OUTPUT_DIR}/${ISO_FILENAME}" || echo "Warning: isohybrid command failed, but xorriso should have created a hybrid image already."
-fi
+echo "Running isohybrid to finalize USB bootability..."
+isohybrid --uefi "${ISO_DIR}/${ISO_FILENAME}" || echo "Warning: isohybrid command failed, but xorriso should have created a hybrid image already."
 
 #xorriso -as mkisofs \
 #    -R -J -joliet-long \
@@ -331,13 +299,13 @@ fi
 #isohybrid --uefi "${OUTPUT_DIR}/${ISO_FILENAME}" || echo "Warning: isohybrid command failed, USB boot may not work properly."
 
 # Calculate checksum
-cd "${OUTPUT_DIR}"
+cd "${ISO_DIR}"
 sha256sum "${ISO_FILENAME}" > "${ISO_FILENAME}.sha256"
 
 echo "======================================================"
 echo "Build complete!"
-echo "ISO file: ${OUTPUT_DIR}/${ISO_FILENAME}"
-echo "SHA256: $(cat ${OUTPUT_DIR}/${ISO_FILENAME}.sha256)"
+echo "ISO file: ${ISO_DIR}/${ISO_FILENAME}"
+echo "SHA256: $(cat ${ISO_DIR}/${ISO_FILENAME}.sha256)"
 echo "======================================================"
 
 # Clean up

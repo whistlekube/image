@@ -1,7 +1,10 @@
 #!/bin/bash
 set -eauox pipefail
 
-# This script runs within the chroot environment and does common setup tasks
+# This script runs within the chroot environment and does base
+# configuration that applies to both the target and live rootfs
+
+echo "Configuring WhistleKube Debian system within chroot environment..."
 
 # Make sure we don't get prompted
 export DEBIAN_FRONTEND=noninteractive
@@ -19,15 +22,5 @@ apt-get update -v
 # Install only the packages we need
 echo "Installing packages..."
 xargs apt-get install -y --no-install-recommends < ./packages.list
-
-# Remove unnecessary packages
-echo "Removing unnecessary packages..."
-apt-get remove -y --purge installation-report tasksel tasksel-data
-apt-get autoremove -y --purge
-
-# Clean apt caches to reduce image size
-echo "Cleaning apt caches..."
-apt-get clean
-rm -rf /var/lib/apt/lists/*
 
 echo "Common setup done"

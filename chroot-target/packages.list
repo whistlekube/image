@@ -1,0 +1,11 @@
+systemd
+systemd-sysv
+linux-image-amd64
+grub-pc
+locales
+tzdata
+bash
+less
+passwd
+apt
+ca-certificates

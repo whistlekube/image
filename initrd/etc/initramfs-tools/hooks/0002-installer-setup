@@ -1,0 +1,39 @@
+#!/bin/sh
+set -e
+PREREQ=""
+prereqs() {
+   echo "$PREREQ"
+}
+case $1 in
+prereqs)
+   prereqs
+   exit 0
+   ;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+# Create a custom script to run during boot
+mkdir -p ${DESTDIR}/lib/live-installer
+cat > ${DESTDIR}/lib/live-installer/setup.sh << 'EOFINNER'
+#!/bin/sh
+# This script will be available in the live environment
+# It's not executed by the initrd but copied for later use
+
+# Detect whether we're in installer mode
+if grep -q "boot=live.*installer" /proc/cmdline; then
+  # Create installer entry script
+  mkdir -p /etc/profile.d
+  cat > /etc/profile.d/installer.sh << 'INSTALLER'
+#!/bin/sh
+# Auto-launch installer on login
+if [ "$(id -u)" = "0" ]; then
+  echo "Starting firewall installer..."
+  cd /usr/lib/firewall-installer
+  ./installer.sh
+fi
+INSTALLER
+  chmod +x /etc/profile.d/installer.sh
+fi
+EOFINNER
+chmod +x ${DESTDIR}/lib/live-installer/setup.sh

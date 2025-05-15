@@ -1,0 +1,42 @@
+#!/bin/sh
+set -e
+PREREQ=""
+prereqs() {
+   echo "$PREREQ"
+}
+case $1 in
+prereqs)
+   prereqs
+   exit 0
+   ;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+# Add filesystem support
+manual_add_modules squashfs
+manual_add_modules overlay
+manual_add_modules isofs
+manual_add_modules ext4
+manual_add_modules vfat
+
+# Add necessary hardware detection modules
+manual_add_modules ata_piix
+manual_add_modules sd_mod
+manual_add_modules sr_mod
+manual_add_modules usb_storage
+manual_add_modules ehci_hcd
+manual_add_modules uhci_hcd
+manual_add_modules xhci_hcd
+manual_add_modules usbhid
+
+# If you're using any special network drivers for your firewall
+# manual_add_modules e1000
+# manual_add_modules r8169
+# etc.
+
+# Ensure all necessary binaries are included
+copy_exec /sbin/modprobe
+copy_exec /bin/mount
+copy_exec /bin/umount
+copy_exec /sbin/blkid
