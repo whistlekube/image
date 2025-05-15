@@ -1,11 +1,13 @@
 
-.PHONY: all build clean docker-build docker-buildx-enable shell iso help
+.PHONY: all build clean docker-build docker-build-debootstrap docker-buildx-enable shell iso help
 
 # Configuration
 IMAGE_NAME := whistlekube-installer
 OUTPUT_DIR := $(shell pwd)/output
 ISO_FILENAME := whistlekube-installer.iso
 BUILD_VERSION := $(shell date +%Y%m%d)
+
+BUILD_TARGET ?= artifact
 
 # Default target
 all: help
@@ -15,11 +17,11 @@ help:
 	@echo "Whistlekube Installer ISO Builder"
 	@echo "-------------------------"
 	@echo "Targets:"
-	@echo "  build        - Build the minimal whistlekube installer ISO in Docker"
-	@echo "  docker-build - Build the Docker image only"
-	@echo "  clean        - Remove output files and temporary data"
-	@echo "  shell        - Start an interactive shell in the Docker container"
-	@echo "  help         - Show this help message"
+	@echo "  build                             - Build the minimal whistlekube installer ISO in Docker"
+	@echo "  docker-build BUILD_TARGET=builder - Build the Docker image for the given target"
+	@echo "  clean                             - Remove output files and temporary data"
+	@echo "  shell                             - Start an interactive shell in the Docker container"
+	@echo "  help                              - Show this help message"
 
 # Build the full ISO via Docker
 build: docker-build
@@ -33,14 +35,15 @@ build: docker-build
 		.
 	@echo "ISO has been created at $(OUTPUT_DIR)/$(ISO_FILENAME)"
 
-# Build Docker image
+# Build Docker image with a configurable target
 docker-build:
-	@echo "Building Installer ISO..."
+	@echo "Building Installer target $(BUILD_TARGET)..."
+
 	@docker buildx build --load \
 	    --allow security.insecure \
-		--target builder \
+		--target $(BUILD_TARGET) \
 		--progress=plain \
-		-t $(IMAGE_NAME)-builder \
+		-t $(IMAGE_NAME)-$(BUILD_TARGET) \
 		.
 
 # Create a new buildx builder with insecure options
@@ -64,12 +67,12 @@ clean:
 
 # Run an interactive shell in the Docker container
 shell: docker-build
-	@echo "Running interactive shell in Docker container..."
+	@echo "Running interactive shell in Docker container for target $(BUILD_TARGET)..."
 	@mkdir -p $(OUTPUT_DIR)
 	# Run shell in container
 	@docker run --rm -it \
 		--privileged \
 		-v $(OUTPUT_DIR):/output \
-		-t $(IMAGE_NAME)-builder \
+		-t $(IMAGE_NAME)-$(BUILD_TARGET) \
 		$(IMAGE_NAME) \
 		/bin/bash
