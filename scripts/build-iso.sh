@@ -148,6 +148,7 @@ echo "\\EFI\\boot\\bootx64.efi" > "${ISO_DIR}/startup.nsh"
 echo "Creating GRUB UEFI bootloader..."
 grub-mkstandalone \
     --compress=xz \
+    --modules="part_gpt part_msdos" \
     --format=x86_64-efi \
     --output="${ISO_DIR}/EFI/boot/bootx64.efi" \
     --locales="" \

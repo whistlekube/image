@@ -27,7 +27,21 @@ apt-get update -v
 
 # Install only the packages we need
 echo "Installing packages..."
-xargs apt-get install -y --no-install-recommends < packages.list
+xargs apt-get install -y --no-install-recommends \
+    systemd \
+    systemd-sysv \
+    linux-image-amd64 \
+    grub-pc \
+    parted \
+    gdisk \
+    e2fsprogs \
+    locales \
+    tzdata \
+    bash \
+    less \
+    passwd \
+    apt \
+    ca-certificates
 
 # Remove unnecessary packages
 echo "Removing unnecessary packages..."

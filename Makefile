@@ -1,5 +1,5 @@
 
-.PHONY: all build clean docker-build docker-cleanall shell iso help
+.PHONY: all build clean docker-build docker-buildx-enable docker-cleanall shell iso help
 
 # Configuration
 IMAGE_NAME := whistlekube-installer-builder
@@ -16,8 +16,7 @@ help:
 	@echo "Whistlekube Installer ISO Builder"
 	@echo "-------------------------"
 	@echo "Targets:"
-	@echo "  build        - Build the minimal whistlekube installer ISO,"
-	@echo "                 based on Debian (builds Docker image if needed)"
+	@echo "  build        - Build the minimal whistlekube installer ISO in Docker"
 	@echo "  docker-build - Build the Docker image only"
 	@echo "  clean        - Remove output files and temporary data"
 	@echo "  shell        - Start an interactive shell in the Docker container"
@@ -40,22 +39,30 @@ build: docker-build
 # Build Docker image
 docker-build:
 	@echo "Building Docker image..."
-	@docker build --progress=plain -t $(IMAGE_NAME) -f Dockerfile .
+	@docker buildx build --allow security.insecure --progress=plain -t $(IMAGE_NAME) -f Dockerfile .
+
+# Create a new buildx builder with insecure options
+docker-buildx-enable:
+	@echo "Creating new buildx builder with insecure options..."
+	@docker buildx create --use --driver=docker-container --buildkitd-flags "--allow-insecure-entitlement security.insecure"
+	@echo "Bootstrapping buildx builder..."
+	@docker buildx inspect --bootstrap
+	@docker buildx ls
 
 # Clean output and temporary files
 clean:
 	@echo "Cleaning up..."
 	@rm -rf $(OUTPUT_DIR)
-	@docker rm -f $(IMAGE_NAME) 2>/dev/null || true
-	@docker rmi -f $(IMAGE_NAME) 2>/dev/null || true
-	@docker system prune -a -f --volumes 2>/dev/null || true
+	@docker rm -f $(IMAGE_NAME) || true
+	@docker rmi -f $(IMAGE_NAME) || true
+	@docker system prune -a -f --volumes || true
 	@echo "Clean completed"
 
 docker-cleanall:
 	@echo "Cleaning up all Docker images and containers..."
-	@docker rm -f $(IMAGE_NAME) 2>/dev/null || true
-	@docker rmi -f $(IMAGE_NAME) 2>/dev/null || true
-	@docker system prune -a -f --volumes 2>/dev/null || true
+	@docker rm -f $(IMAGE_NAME) || true
+	@docker rmi -f $(IMAGE_NAME) || true
+	@docker system prune -a -f --volumes || true
 	@echo "Clean completed"
 
 # Run an interactive shell in the Docker container
