@@ -6,7 +6,7 @@ ARG DEBIAN_MIRROR=http://deb.debian.org/debian
 
 ARG ISO_OUTPUT_FILE="/whistlekube-installer.iso"
 
-FROM debian:${DEBIAN_RELEASE}-slim AS builder-base
+FROM debian:${DEBIAN_RELEASE}-slim AS base
 
 # Pass global build arguments to this stage
 ARG DEBIAN_RELEASE
@@ -25,7 +25,7 @@ ENV DEBCONF_NONINTERACTIVE_SEEN=true
 ENV DEBIAN_ARCH="${TARGETARCH}"
 
 # Use a Debian trixie base image
-FROM builder-base AS debootstrap-builder
+FROM base AS debootstrap-builder
 
 # Install required packages for the build process
 RUN apt-get update && \
@@ -82,7 +82,7 @@ RUN --security=insecure \
     mksquashfs "${ROOTFS_DIR}" "/filesystem.squashfs" -comp xz -no-xattrs -no-fragments -wildcards -b 1M -e boot && \
     echo "=== Chroot configured for target ==="
 
-FROM builder-base AS iso-builder
+FROM base AS iso-builder
 
 ARG ISO_OUTPUT_FILE
 
