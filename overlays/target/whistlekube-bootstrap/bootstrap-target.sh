@@ -14,10 +14,23 @@ mount_filesystems
 export DEBIAN_FRONTEND=noninteractive
 
 # Install packages specific to the target environment
-apt-get update
+apt-get update -y
 apt-get install -y --no-install-recommends \
     grub-common \
     ucf
+
+# Get grub packages from the live installer environment
+
+mkdir -p /grub-debs
+pushd /grub-debs
+apt-get download \
+    grub-pc \
+    grub-pc-bin \
+    grub-common \
+    grub-efi-amd64 \
+    grub-efi-amd64-bin \
+    grub2-common
+popd
 
 # Cleanup apt cache
 cleanup_apt

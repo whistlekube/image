@@ -12,6 +12,7 @@ mount_filesystems
 export DEBIAN_FRONTEND=noninteractive
 
 # Install packages specific to the live environment
+apt-get update -y
 apt-get install -y --no-install-recommends \
     live-boot \
     live-config \

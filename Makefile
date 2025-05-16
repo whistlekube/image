@@ -12,13 +12,13 @@ ARTIFACT_BUILD_TARGET ?= artifact
 
 # === Configuration ===
 # The Debian release to base the ISO on
-DEBIAN_RELEASE ?= trixie
+DEBIAN_RELEASE ?= bookworm
 # The version of the build
 BUILD_VERSION ?= dev-${BUILD_DATE}-${GIT_COMMIT}
 # The output directory for the build
 OUTPUT_DIR ?= $(shell pwd)/output
 # The filename of the ISO to build
-ISO_FILENAME ?= whistlekube-${DEBIAN_RELEASE}-${BUILD_VERSION}.iso
+ISO_FILENAME ?= whistlekube-amd64-${BUILD_VERSION}.iso
 # The docker target to build
 BUILD_TARGET ?= $(ARTIFACT_BUILD_TARGET)
 # The name of the Docker image to build

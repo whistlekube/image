@@ -1,6 +1,8 @@
 #!/bin/bash
 # This is the main installer script that runs in the live environment
 
+set -euo pipefail
+
 # Define paths
 CDROM_MOUNT="/run/live/medium"  # live-boot typically mounts the installation media here
 TARGET_SQUASHFS="${CDROM_MOUNT}/install/filesystem.squashfs"
