@@ -12,9 +12,9 @@ ARTIFACT_BUILD_TARGET ?= artifact
 
 # === Configuration ===
 # The Debian release to base the ISO on
-DEBIAN_RELEASE ?= bookworm
+DEBIAN_RELEASE ?= trixie
 # The version of the build
-BUILD_VERSION ?= dev-${BUILD_DATE}-${GIT_COMMIT}
+BUILD_VERSION ?= $(USER)-${BUILD_DATE}-${GIT_BRANCH}
 # The output directory for the build
 OUTPUT_DIR ?= $(shell pwd)/output
 # The filename of the ISO to build
@@ -22,7 +22,7 @@ ISO_FILENAME ?= whistlekube-amd64-${BUILD_VERSION}.iso
 # The docker target to build
 BUILD_TARGET ?= $(ARTIFACT_BUILD_TARGET)
 # The name of the Docker image to build
-IMAGE_NAME ?= whistlekube-installer-${BUILD_TARGET}
+DOCKER_IMAGE_NAME ?= whistlekube-installer-${BUILD_TARGET}
 # Custom build flags to pass to docker buildx
 EXTRA_BUILD_FLAGS ?=
 # Debian mirror to use for the build
@@ -79,7 +79,7 @@ build:
 	@echo "Build version: $(BUILD_VERSION)"
 	@echo "ISO filename: $(ISO_FILENAME)"
 	@echo "Output directory: $(OUTPUT_DIR)"
-	@echo "Docker image name: $(IMAGE_NAME)"
+	@echo "Docker image name: $(DOCKER_IMAGE_NAME)"
 	@echo "Extra build flags: $(EXTRA_BUILD_FLAGS)"
 	@echo "Build user: $(USER)"
 	@echo "Build host: $(shell hostname -f)"
@@ -88,7 +88,7 @@ build:
 	@echo
 
 	@mkdir -p $(OUTPUT_DIR)
-	docker buildx build $(BUILD_FLAGS) -t $(IMAGE_NAME) .
+	docker buildx build $(BUILD_FLAGS) -t $(DOCKER_IMAGE_NAME) .
 	@echo "ISO has been created at $(OUTPUT_DIR)/$(ISO_FILENAME)"
 
 # Build just the base chroot
@@ -119,8 +119,8 @@ docker-buildx-enable:
 clean:
 	@echo "Cleaning up..."
 	@rm -rf $(OUTPUT_DIR)
-	@docker rm -f $(IMAGE_NAME) || true
-	@docker rmi -f $(IMAGE_NAME) || true
+	@docker rm -f $(DOCKER_IMAGE_NAME) || true
+	@docker rmi -f $(DOCKER_IMAGE_NAME) || true
 	@docker system prune -a -f --volumes || true
 	@docker buildx prune -f --all || true
 	@echo "Clean completed"
@@ -131,7 +131,7 @@ shell: build
 	# Run shell in container
 	@docker run --rm -it \
 		--privileged \
-		-t $(IMAGE_NAME) \
+		-t $(DOCKER_IMAGE_NAME) \
 		/bin/bash
 
 shell-chroot:

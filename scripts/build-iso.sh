@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Build variables
 OUTPUT_DIR=${OUTPUT_DIR:-$(pwd)/output}
-ISO_DIR="${ISO_DIR:-$(pwd)/iso}"
+ISO_DIR="${ISO_DIR:-$(pwd)/cdrom}"
 ISO_LABEL=${ISO_LABEL:-"WHISTLEKUBE_ISO"}
 ISO_APPID=${ISO_APPID:-"Whistlekube Installer"}
 ISO_PUBLISHER=${ISO_PUBLISHER:-"Whistlekube"}

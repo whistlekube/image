@@ -18,7 +18,7 @@ echo 'Dpkg::Options {"--force-confnew";}' > /etc/apt/apt.conf.d/90dpkgoptions
 
 # Update and install packages
 export DEBIAN_FRONTEND=noninteractive
-apt-get update
+apt-get update -y
 apt-get install -y --no-install-recommends \
     linux-image-amd64 \
     systemd-sysv \

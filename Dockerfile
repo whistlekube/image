@@ -2,9 +2,9 @@
 
 # Global build arguments
 ARG DEBIAN_RELEASE="trixie"
-ARG BUILD_VERSION="unknown"
+ARG BUILD_VERSION="UNKNOWNVERSION"
 ARG DEBIAN_MIRROR="http://deb.debian.org/debian"
-ARG ISO_FILENAME="wkinstall-${BUILD_VERSION}.iso"
+ARG ISO_FILENAME="whistlekube-linux-${BUILD_VERSION}.iso"
 ARG OUTPUT_DIR="/output"
 
 # === Base builder ===
@@ -117,24 +117,18 @@ RUN --mount=type=cache,target=${ROOTFS_DIR}/var/cache/apt,sharing=locked \
 # This stage builds the grub images and the final bootable ISO
 FROM base-builder AS iso-build
 
-ARG ISO_LABEL="WHISTLEKUBE_ISO"
-ARG ISO_APPID="Whistlekube Installer"
-ARG ISO_PUBLISHER="Whistlekube"
-ARG ISO_PREPARER="Built with xorriso"
-ARG ISO_FILENAME
-
-ENV ISO_DIR="/iso"
-ENV REPO_BINARY_DIR="${ISO_DIR}/pool/main/binary"
-ENV REPO_DIST_DIR="${ISO_DIR}/dists/${DEBIAN_RELEASE}/main/binary"
-ENV ISO_EFI_DIR="${ISO_DIR}/EFI"
-ENV EFI_MOUNT_POINT="/efimount"
+ENV ISO_DIR="/cdrom"
+ENV REPO_BINARY_DIR="${ISO_DIR}/pool/main/binary-${DEBIAN_ARCH}"
+ENV REPO_DIST_DIR="${ISO_DIR}/dists/${DEBIAN_RELEASE}/main/binary-${DEBIAN_ARCH}"
 
 WORKDIR /build
 
 # Install required packages for the build process
 # and build the local installer repository
 COPY --from=targetfs-build ${OUTPUT_DIR}/grub-debs/ ${REPO_BINARY_DIR}/
-RUN apt-get update -y && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update -y && \
     apt-get install -y --no-install-recommends \
         grub-pc-bin \
         grub-efi-amd64-bin \
@@ -148,13 +142,14 @@ RUN apt-get update -y && \
         mtools && \
     echo "=== Building local installer repository ===" && \
     mkdir -p "${REPO_BINARY_DIR}" "${REPO_DIST_DIR}" && \
-    echo "=== Building Packages file ===" && \
-    apt-ftparchive packages "${REPO_BINARY_DIR}" > "${REPO_DIST_DIR}/Packages" && \
-    echo "=== Gzipping Packages file ===" && \
+    cd "${ISO_DIR}" && \
+    apt-ftparchive packages pool/main > "${REPO_DIST_DIR}/Packages" && \
     gzip -k "${REPO_DIST_DIR}/Packages" && \
-    echo "=== Building Release file ===" && \
-    apt-ftparchive release ${REPO_DIST_DIR} > "${REPO_DIST_DIR}/Release" && \
-    echo "=== Cleaning up ===" && \
+    apt-ftparchive release dists/trixie/main > "${REPO_DIST_DIR}/Release" && \
+    echo "********* PACKAGES *********" && \
+    cat "${REPO_DIST_DIR}/Packages.gz" | gunzip && \
+    echo "********* RELEASE *********" && \
+    cat "${REPO_DIST_DIR}/Release" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -168,6 +163,14 @@ COPY /overlays/iso/ ${ISO_DIR}/
 # Copy the ISO build script
 COPY /scripts/build-iso.sh .
 
+ARG ISO_LABEL="WHISTLEKUBE_ISO"
+ARG ISO_APPID="Whistlekube Installer"
+ARG ISO_PUBLISHER="Whistlekube"
+ARG ISO_PREPARER="Built with xorriso"
+ARG ISO_FILENAME
+
+ENV ISO_EFI_DIR="${ISO_DIR}/EFI"
+ENV EFI_MOUNT_POINT="/efimount"
 
 # Build the GRUB images for BIOS and EFI boot and the final ISO
 RUN --security=insecure \

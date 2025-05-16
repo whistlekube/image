@@ -3,11 +3,13 @@
 
 set -euo pipefail
 
+export DEBIAN_FRONTEND=noninteractive
+
 # Define paths
 CDROM_MOUNT="/run/live/medium"  # live-boot typically mounts the installation media here
 TARGET_SQUASHFS="${CDROM_MOUNT}/install/filesystem.squashfs"
 TARGET_MNT="/target"
-EFI_MNT="${TARGET_MOUNT}/boot/efi"
+EFI_MNT="${TARGET_MNT}/boot/efi"
 
 # Colors for better UI
 GREEN='\033[0;32m'
@@ -203,20 +205,28 @@ install_bootloader() {
 
     echo -e "${BLUE}Installing bootloader...${NC}"
 
+    # Move sources.list files to prevent using Debian mirrors
+    local sources_backup=/tmp/sources.list.d.backup
+    mkdir -p "${sources_backup}/sources.list.d"
+    mv "${TARGET_MNT}/etc/apt/sources.list" "${sources_backup}/" || true
+    mv "${TARGET_MNT}/etc/apt/sources.list.d/"* "${sources_backup}/sources.list.d/" || true
+
     # Set up the local repository in the target system
     mkdir -p "${TARGET_MNT}/etc/apt/sources.list.d/"
-    echo "deb [trusted=yes] file:///cdrom/pool/main binary/" > "${TARGET_MNT}/etc/apt/sources.list.d/local-install.list"
+    echo "deb [trusted=yes] file:///cdrom trixie main" > "${TARGET_MNT}/etc/apt/sources.list.d/local-install.list"
 
     # Mount the cdrom inside the chroot
     mkdir -p "${TARGET_MNT}/cdrom"
     mount --bind "${CDROM_MOUNT}" "${TARGET_MNT}/cdrom"
+
+    # Update apt with the local repository
+    chroot "$TARGET_MNT" apt-get update
 
     # Configure GRUB for the target system
     if is_uefi; then
         echo "Installing GRUB for UEFI system..."
         
         # Install GRUB packages for UEFI using apt
-        chroot "$TARGET_MNT" apt-get update
         chroot "$TARGET_MNT" apt-get install -y --no-install-recommends grub-efi-amd64
         
         # Install GRUB to the EFI partition
@@ -226,7 +236,6 @@ install_bootloader() {
         echo "Installing GRUB for BIOS system..."
 
         # Install GRUB packages for BIOS using apt
-        chroot "$TARGET_MNT" apt-get update
         chroot "$TARGET_MNT" apt-get install -y --no-install-recommends grub-pc
 
         # Install GRUB to the MBR
@@ -235,6 +244,16 @@ install_bootloader() {
 
     # Generate the grub.cfg file
     chroot "$TARGET_MNT" update-grub
+
+    # Remove the local repository and set up proper Debian mirrors
+    rm -f "${TARGET_MNT}/etc/apt/sources.list.d/local-install.list"
+    mv "${sources_backup}/sources.list" "${TARGET_MNT}/etc/apt/sources.list"
+    mv "${sources_backup}/sources.list.d" "${TARGET_MNT}/etc/apt/sources.list.d"
+    rm -rf "${sources_backup}"
+    umount "${TARGET_MNT}/cdrom"
+
+    # Update apt with the real repository
+    chroot "$TARGET_MNT" apt-get update
 
     echo -e "${GREEN}Bootloader installation completed!${NC}"
     sleep 1
@@ -305,8 +324,8 @@ main() {
     extract_rootfs
     #mount_target "$disk"
     #install_system
-    install_bootloader "$disk"
     configure_system
+    install_bootloader "$disk"
     read -p "Press Enter to continue..." dummy
     finish_installation
 

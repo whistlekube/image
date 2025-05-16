@@ -17,19 +17,18 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y --no-install-recommends \
     grub-common \
+    grub2-common \
     ucf
 
 # Get grub packages from the live installer environment
-
 mkdir -p /grub-debs
 pushd /grub-debs
 apt-get download \
     grub-pc \
     grub-pc-bin \
-    grub-common \
     grub-efi-amd64 \
     grub-efi-amd64-bin \
-    grub2-common
+    efibootmgr
 popd
 
 # Cleanup apt cache
