@@ -1,8 +1,6 @@
 #!/bin/bash
 # This is the main installer script that runs in the live environment
 
-#dialog --msgbox "Welcome to the Whistlekube Installer!\n\n- Partitioning\n- Formatting\n- Copying target.squashfs\n- Installing GRUB to target" 15 60
-
 # Define paths
 CDROM_MOUNT="/cdrom"  # live-boot typically mounts the installation media here
 TARGET_SQUASHFS="${CDROM_MOUNT}/live/target.squashfs"
@@ -15,39 +13,89 @@ setup_ui() {
   export DIALOG_BACKTITLE="Whistlekube Installer"
 }
 
+# Function to select locale
+select_locale() {
+  # Get list of available locales
+  local locales=$(locale -a | sort)
+  local locale_list=""
+  local i=1
+  
+  for loc in $locales; do
+    locale_list="$locale_list $i $loc"
+    i=$((i+1))
+  done
+
+  # Show locale selection dialog
+  local selected=$(dialog --stdout --title "Locale Selection" \
+    --menu "Select system locale:" 20 60 10 $locale_list)
+  
+  if [ -z "$selected" ]; then
+    return 1
+  fi
+
+  # Get the actual locale name from the selection
+  local selected_locale=$(echo "$locales" | sed -n "${selected}p")
+  echo "$selected_locale"
+}
+
+# Function to select keymap
+select_keymap() {
+  # Get list of available keymaps
+  local keymaps=$(find /usr/share/keymaps -type f -name "*.map.gz" | sed 's|/usr/share/keymaps/||;s|.map.gz||' | sort)
+  local keymap_list=""
+  local i=1
+  
+  for km in $keymaps; do
+    keymap_list="$keymap_list $i $km"
+    i=$((i+1))
+  done
+
+  # Show keymap selection dialog
+  local selected=$(dialog --stdout --title "Keyboard Layout" \
+    --menu "Select keyboard layout:" 20 60 10 $keymap_list)
+  
+  if [ -z "$selected" ]; then
+    return 1
+  fi
+
+  # Get the actual keymap name from the selection
+  local selected_keymap=$(echo "$keymaps" | sed -n "${selected}p")
+  echo "$selected_keymap"
+}
+
 # Function to partition disk
 partition_disk() {
   local disk="$1"
-  
+
   # Show partitioning dialog
   dialog --title "Partitioning" --yesno "This will erase all data on $disk. Continue?" 8 60
   if [ $? -ne 0 ]; then
     return 1
   fi
-  
+
   # Create partitions
   parted -s "$disk" mklabel gpt
   parted -s "$disk" mkpart primary fat32 1MiB 513MiB
   parted -s "$disk" set 1 esp on
   parted -s "$disk" mkpart primary ext4 513MiB 100%
-  
+
   # Format partitions
   mkfs.vfat "${disk}1"
   mkfs.ext4 "${disk}2"
-  
+
   return 0
 }
 
 # Function to mount target filesystem
 mount_target() {
   local disk="$1"
-  
+
   # Create mount point
   mkdir -p "$TARGET_MOUNT"
-  
+
   # Mount root partition
   mount "${disk}2" "$TARGET_MOUNT"
-  
+
   # Create and mount boot/efi
   mkdir -p "$TARGET_MOUNT/boot/efi"
   mount "${disk}1" "$TARGET_MOUNT/boot/efi"
@@ -56,16 +104,16 @@ mount_target() {
 # Function to install system
 install_system() {
   dialog --title "Installing" --infobox "Installing system files..." 5 70
-  
+
   # Mount squashfs if not already mounted
   if [ ! -d "/mnt/squashfs" ]; then
     mkdir -p /mnt/squashfs
     mount -t squashfs -o ro "$TARGET_SQUASHFS" /mnt/squashfs
   fi
-  
+
   # Copy files (use rsync for better progress reporting)
   rsync -a /mnt/squashfs/ "$TARGET_MOUNT/"
-  
+
   # Clean up
   umount /mnt/squashfs
 }
@@ -73,15 +121,15 @@ install_system() {
 # Function to install bootloader
 install_bootloader() {
   local disk="$1"
-  
+
   # Chroot and install GRUB
   for dir in /dev /proc /sys; do
     mount --bind $dir "$TARGET_MOUNT$dir"
   done
-  
+
   chroot "$TARGET_MOUNT" grub-install "$disk"
   chroot "$TARGET_MOUNT" update-grub
-  
+
   # Unmount
   for dir in /sys /proc /dev; do
     umount "$TARGET_MOUNT$dir"
@@ -92,46 +140,66 @@ install_bootloader() {
 configure_system() {
   # Set hostname
   echo "firewall" > "$TARGET_MOUNT/etc/hostname"
-  
+
   # Configure network (example)
   cat > "$TARGET_MOUNT/etc/network/interfaces.d/eth0" << EOF
 auto eth0
 iface eth0 inet dhcp
 EOF
-  
+
+  # Configure locale
+  local selected_locale=$(select_locale)
+  if [ -n "$selected_locale" ]; then
+    echo "LANG=$selected_locale" > "$TARGET_MOUNT/etc/locale.conf"
+    echo "LC_ALL=$selected_locale" >> "$TARGET_MOUNT/etc/locale.conf"
+    chroot "$TARGET_MOUNT" locale-gen
+  fi
+
+  # Configure keymap
+  local selected_keymap=$(select_keymap)
+  if [ -n "$selected_keymap" ]; then
+    echo "KEYMAP=$selected_keymap" > "$TARGET_MOUNT/etc/vconsole.conf"
+  fi
+
   # Additional configuration as needed
 }
 
 # Main installation workflow
 main() {
   setup_ui
-  
+
+  local welcome_msg="Welcome to the Whistlekube Installer!\n\n" \
+  "This will install a minimal Whistlekube system to the selected disk.\n" \
+  "The configuration can be completed after the installation is complete via the web interface.\n" \
+  "Documentation can be found at https://whistlekube.com/docs"
+  dialog --msgbox "$welcome_msg" 15 60
+
   # Select disk to install to
   disk=$(dialog --stdout --title "Disk Selection" --menu "Select disk to install to:" 15 60 5 \
     $(lsblk -d -o NAME,SIZE -n -e 7,11 | awk '{print "/dev/"$1 " " $2}'))
-  
+
   if [ -z "$disk" ]; then
     dialog --title "Cancelled" --msgbox "Installation cancelled." 5 40
     exit 1
   fi
-  
+
   # Perform installation steps
   if ! partition_disk "$disk"; then
     dialog --title "Cancelled" --msgbox "Installation cancelled." 5 40
     exit 1
   fi
-  
+
   mount_target "$disk"
   install_system
   install_bootloader "$disk"
   configure_system
-  
+
   # Unmount target
   umount -R "$TARGET_MOUNT"
-  
+
   # Installation complete
   dialog --title "Installation Complete" --msgbox "Firewall system has been installed. The system will now reboot." 7 60
-  
+
   # Reboot
   reboot
 }

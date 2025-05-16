@@ -1,21 +1,78 @@
 #!/bin/bash
 set -eauox pipefail
 
-# Default values (can be overridden by environment variables)
+# Build variables
 BUILD_VERSION=${BUILD_VERSION:-"$(date +%Y%m%d)"}
-ISO_FILENAME=${ISO_FILENAME:-"whistlekube-installer.iso"}
 DEBIAN_RELEASE=${DEBIAN_RELEASE:-"trixie"}
 DEBIAN_ARCH=${DEBIAN_ARCH:-"amd64"}
+ISO_OUTPUT_FILE=${ISO_OUTPUT_FILE:-"whistlekube-installer-${DEBIAN_RELEASE}-${DEBIAN_ARCH}-${BUILD_VERSION}.iso"}
+ISO_LABEL=${ISO_LABEL:-"WHISTLEKUBE_ISO"}
+ISO_APPID=${ISO_APPID:-"Whistlekube Installer"}
+ISO_PUBLISHER=${ISO_PUBLISHER:-"Whistlekube"}
+ISO_PREPARER=${ISO_PREPARER:-"Built with xorriso"}
 
 # Directories
-WORK_DIR="${WORK_DIR:-$(pwd)}"
-LIVE_CHROOT_DIR="${LIVE_CHROOT_DIR:-${WORK_DIR}/live-rootfs}"
-TARGET_CHROOT_DIR="${TARGET_CHROOT_DIR:-${WORK_DIR}/target-rootfs}"
-ISO_DIR="${ISO_DIR:-${WORK_DIR}/iso}"
-BOOT_DIR=${ISO_DIR}/boot
-GRUB_DIR=${BOOT_DIR}/grub
-ISOLINUX_DIR=${BOOT_DIR}/isolinux
-EFI_DIR=${ISO_DIR}/EFI
+ISO_DIR="${ISO_DIR:-$(pwd)/iso}"
+EFI_MOUNT_POINT="${EFI_MOUNT_POINT:-/efimount}"
+HYBRID_MBR_PATH="${HYBRID_MBR_PATH:-/usr/lib/grub/i386-pc/boot_hybrid.img}"
+
+
+build_grub_bios() {
+  grub-mkimage \
+    -O i386-pc-eltorito \
+    -o "${ISO_DIR}/boot/grub/core.img" \
+    -p /boot/grub \
+    biosdisk iso9660 \
+    normal configfile \
+    echo linux search search_label \
+    part_msdos part_gpt fat ext2
+}
+
+build_grub_uefi() {
+  mkdir -p "${ISO_DIR}/EFI" "${EFI_MOUNT_POINT}"
+  dd if=/dev/zero of="${ISO_DIR}/EFI/efiboot.img" bs=1M count=10
+  mkfs.vfat -F 32 "${ISO_DIR}/EFI/efiboot.img"
+  mkdir -p "${EFI_MOUNT_POINT}"
+  mount -o loop "${ISO_DIR}/EFI/efiboot.img" "${EFI_MOUNT_POINT}"
+  mkdir -p "${EFI_MOUNT_POINT}/EFI/BOOT"
+  grub-mkimage \
+    -O x86_64-efi \
+    -o "${EFI_MOUNT_POINT}/EFI/BOOT/BOOTX64.EFI" \
+    -p /boot/grub \
+    iso9660 normal configfile \
+    echo linux search search_label \
+    part_msdos part_gpt fat ext2 efi_gop efi_uga \
+    all_video font && \
+  cp "${ISO_DIR}/boot/grub/grub.cfg" "${EFI_MOUNT_POINT}/EFI/BOOT/grub.cfg"
+  umount "${EFI_MOUNT_POINT}"
+  rmdir "${EFI_MOUNT_POINT}"
+}
+
+build_iso() {
+  echo "Creating bootable ISO..."
+  xorriso \
+    -as mkisofs \
+    -iso-level 3 \
+    -rock --joliet --joliet-long \
+    -full-iso9660-filenames \
+    -volid "${ISO_LABEL}" \
+    -appid "${ISO_APPID}" \
+    -publisher "${ISO_PUBLISHER}" \
+    -preparer "${ISO_PREPARER}" \
+    -eltorito-boot boot/grub/core.img \
+      -no-emul-boot \
+      -boot-load-size 4 \
+      -boot-info-table \
+      --grub2-boot-info \
+    -eltorito-alt-boot \
+      -e EFI/efiboot.img \
+      -no-emul-boot \
+    -isohybrid-mbr ${HYBRID_MBR_PATH} \
+    -append_partition 2 0xef "${ISO_DIR}/EFI/efiboot.img" \
+    -isohybrid-gpt-basdat \
+    -output "${ISO_OUTPUT_FILE}" \
+    "${ISO_DIR}"
+}
 
 echo "======================================================"
 echo "Building Whistlekube Installer ISO"
@@ -23,317 +80,47 @@ echo "======================================================"
 echo "Build Version: ${BUILD_VERSION}"
 echo "Debian Release: ${DEBIAN_RELEASE}"
 echo "Architecture: ${DEBIAN_ARCH}"
-echo "Work dir: ${WORK_DIR}"
-echo "Live chroot dir: ${LIVE_CHROOT_DIR}"
 echo "ISO dir: ${ISO_DIR}"
 echo "======================================================"
 
 # Create bootable ISO directory structure
 mkdir -p "${ISO_DIR}"/{boot/{isolinux,grub},EFI/boot,install,preseed,live}
 
-if [ -d "${LIVE_CHROOT_DIR}" ]; then
-    echo "Listing contents of live chroot directory:"
-    ls -la "${LIVE_CHROOT_DIR}"
-else
-    echo "Error: Live chroot directory does not exist at ${LIVE_CHROOT_DIR}"
-    exit 1
-fi
-
-# Copy kernel and initrd from chroot
-echo "Copying kernel and initrd files..."
-ls -la "${LIVE_CHROOT_DIR}/boot/"
-KERNEL_FILE=$(ls -1 "${LIVE_CHROOT_DIR}/boot/vmlinuz-"* 2>/dev/null | head -n 1)
-INITRD_FILE=$(ls -1 "${LIVE_CHROOT_DIR}/boot/initrd.img-"* 2>/dev/null | head -n 1)
-
-if [ -z "$KERNEL_FILE" ] || [ -z "$INITRD_FILE" ]; then
-    echo "Error: Could not find kernel or initrd files in ${LIVE_CHROOT_DIR}/boot/"
-    ls -la "${LIVE_CHROOT_DIR}/boot/"
-    exit 1
-fi
-
-echo "Found kernel: $KERNEL_FILE"
-echo "Found initrd: $INITRD_FILE"
-
-cp "$KERNEL_FILE" "${ISO_DIR}/boot/vmlinuz"
-cp "$INITRD_FILE" "${ISO_DIR}/boot/initrd.img"
-
 # Verify the files were copied correctly
-if [ ! -f "${ISO_DIR}/boot/vmlinuz" ] || [ ! -f "${ISO_DIR}/boot/initrd.img" ]; then
-    echo "Error: Failed to copy kernel or initrd files to ISO directory"
+if [ ! -f "${ISO_DIR}/live/vmlinuz" ] || \
+   [ ! -f "${ISO_DIR}/live/initrd.img" ] || \
+   [ ! -f "${ISO_DIR}/live/filesystem.squashfs" ]; then
+    echo "Error: Live chroot files not found"
+    exit 1
+fi
+if [ ! -f "${ISO_DIR}/installer/target.squashfs" ]; then
+    echo "Error: Target chroot filesystem not found"
+    exit 1
+fi
+if [ ! -f "${ISO_DIR}/boot/grub/grub.cfg" ]; then
+    echo "Error: GRUB config not found"
     exit 1
 fi
 
-echo "Kernel and initrd files copied successfully"
+# Create GRUB for BIOS boot
+echo "Creating GRUB for BIOS boot..."
+build_grub_bios
 
-# Copy isolinux files for BIOS boot
-echo "Setting up BIOS boot..."
-cp /usr/lib/ISOLINUX/isolinux.bin "${ISO_DIR}/boot/isolinux/"
-cp /usr/lib/ISOLINUX/isohdpfx.bin "${WORK_DIR}/isohdpfx.bin"
-cp /usr/lib/syslinux/modules/bios/{ldlinux.c32,libcom32.c32,libutil.c32,menu.c32,vesamenu.c32} "${ISO_DIR}/boot/isolinux/"
+# Create GRUB for UEFI boot
+echo "Creating GRUB for UEFI boot..."
+build_grub_uefi
 
-# Create isolinux.cfg
-cat > "${ISO_DIR}/boot/isolinux/isolinux.cfg" << EOF
-UI vesamenu.c32
-PROMPT 0
-TIMEOUT 30
-DEFAULT install
-
-MENU TITLE Whistlekube Installer
-MENU BACKGROUND /boot/isolinux/splash.png
-MENU COLOR title        * #FFFFFFFF *
-MENU COLOR border       * #00000000 #00000000 none
-MENU COLOR sel          * #ffffffff #76a1d0ff *
-MENU COLOR hotsel       1;7;37;40 #ffffffff #76a1d0ff *
-MENU COLOR tabmsg       * #ffffffff #00000000 *
-MENU COLOR help         37;40 #ffdddd00 #00000000 none
-
-LABEL install
-  MENU LABEL ^Install Whistlekube
-  MENU DEFAULT
-  KERNEL /boot/vmlinuz
-  APPEND initrd=/boot/initrd.img boot=live live-media-path=/live components quiet splash installer
-LABEL hd
-  MENU LABEL ^Boot from First Hard Disk
-  LOCALBOOT 0x80
-EOF
-
-# Create UEFI boot support
-echo "Creating UEFI boot support..."
-
-mkdir -p "${WORK_DIR}/efi-image/EFI/boot"
-
-# Create GRUB configuration
-mkdir -p "${ISO_DIR}/boot/grub"
-cat > "${ISO_DIR}/boot/grub/grub.cfg" << EOF
-set timeout=30
-set default=0
-
-insmod all_video
-insmod gfxterm
-insmod png
-terminal_output gfxterm
-
-# Load theme and background
-if background_image /boot/grub/splash.png; then
-  set color_normal=white/black
-  set color_highlight=black/light-gray
-else
-  set menu_color_normal=cyan/blue
-  set menu_color_highlight=white/blue
-fi
-
-menuentry "Install Whistlekube" {
-    linux /boot/vmlinuz root=/dev/ram auto=true priority=critical preseed/file=/preseed/preseed.cfg quiet
-    initrd /boot/initrd.img
-}
-
-menuentry "Boot from next volume" {
-    exit 1
-}
-
-menuentry "UEFI Firmware Settings" {
-    fwsetup
-}
-EOF
-
-# Create startup.nsh for UEFI shell
-echo "\\EFI\\boot\\bootx64.efi" > "${ISO_DIR}/startup.nsh"
-
-# Create GRUB EFI bootloader
-echo "Creating GRUB UEFI bootloader..."
-grub-mkstandalone \
-    --compress=xz \
-    --modules="part_gpt part_msdos" \
-    --format=x86_64-efi \
-    --output="${ISO_DIR}/EFI/boot/bootx64.efi" \
-    --locales="" \
-    --fonts="" \
-    --themes="" \
-    "boot/grub/grub.cfg=${ISO_DIR}/boot/grub/grub.cfg"
-
-# Create a second copy for the image
-cp "${ISO_DIR}/EFI/boot/bootx64.efi" "${WORK_DIR}/bootx64.efi"
-
-# Create a FAT EFI system partition image
-echo "Creating EFI system partition image..."
-dd if=/dev/zero of="${WORK_DIR}/efi.img" bs=1M count=4
-mkfs.vfat "${GRUB_DIR}/efi.img"
-mmd -i "${GRUB_DIR}/efi.img" ::/EFI ::/EFI/boot
-mcopy -i "${GRUB_DIR}/efi.img" "${WORK_DIR}/bootx64.efi" ::/EFI/boot/
-
-# Mount the EFI image and copy the bootloader
-#mkdir -p "${WORK_DIR}/mnt"
-#mount "${WORK_DIR}/efi.img" "${WORK_DIR}/mnt" || {
-#    echo "Error mounting EFI image. Using alternative method..."
-#    # If mounting fails, use mtools instead
-#    mmd -i "${WORK_DIR}/efi.img" ::/EFI
-#    mmd -i "${WORK_DIR}/efi.img" ::/EFI/boot
-#    mcopy -i "${WORK_DIR}/efi.img" "${WORK_DIR}/bootx64.efi" ::/EFI/boot/
-#}
-
-# Unmount if we mounted successfully
-#if mountpoint -q "${WORK_DIR}/mnt"; then
-#    mkdir -p "${WORK_DIR}/mnt/EFI/boot"
-#    cp "${WORK_DIR}/bootx64.efi" "${WORK_DIR}/mnt/EFI/boot/"
-#    umount "${WORK_DIR}/mnt"
-#fi
-
-# Copy the EFI image
-#cp "${WORK_DIR}/efi.img" "${ISO_DIR}/boot/grub/efi.img"
-
-# Add the Debian archives keyring
-mkdir -p "${ISO_DIR}/keyring"
-cp "${LIVE_CHROOT_DIR}/usr/share/keyrings/debian-archive-keyring.gpg" "${ISO_DIR}/keyring/" 2>/dev/null || true
-
-
-## # Create EFI directory structure directly
-## mkdir -p "${ISO_DIR}/EFI/boot"
-## 
-## # Copy GRUB EFI binary to the standard location
-## if [ -f /usr/lib/grub/x86_64-efi/monolithic/grubx64.efi ]; then
-##     cp /usr/lib/grub/x86_64-efi/monolithic/grubx64.efi "${ISO_DIR}/EFI/boot/bootx64.efi"
-## elif [ -f /usr/lib/grub/x86_64-efi/grubx64.efi ]; then
-##     cp /usr/lib/grub/x86_64-efi/grubx64.efi "${ISO_DIR}/EFI/boot/bootx64.efi"
-## else
-##     # Generate grub EFI file
-##     echo "Generating GRUB EFI binary..."
-##     grub-mkstandalone \
-##         --format=x86_64-efi \
-##         --output="${ISO_DIR}/EFI/boot/bootx64.efi" \
-##         --locales="" \
-##         --fonts="" \
-##         "boot/grub/grub.cfg=${ISO_DIR}/boot/grub/grub.cfg"
-## fi
-## 
-## # Create a startup.nsh for UEFI shells
-## echo "\\EFI\\boot\\bootx64.efi" > "${ISO_DIR}/startup.nsh"
-## 
-## # Create dummy efi.img file (not mounted, just a placeholder for xorriso)
-## mkdir -p "${ISO_DIR}/boot/grub"
-## touch "${ISO_DIR}/boot/grub/efi.img"
-
-## # Create GRUB configuration
-## cat > "${ISO_DIR}/boot/grub/grub.cfg" << EOF
-## set timeout=30
-## set default=0
-## 
-## menuentry "Install Debian Minimal" {
-##     linux /boot/vmlinuz auto=true priority=critical preseed/file=/preseed/preseed.cfg quiet
-##     initrd /boot/initrd.img
-## }
-## EOF
-## 
-## # Create a temporary directory for the UEFI image
-## UEFI_TMP=$(mktemp -d)
-## truncate -s 4M "${UEFI_TMP}/efi.img"
-## mkfs.vfat "${UEFI_TMP}/efi.img"
-## 
-## mkdir -p "${UEFI_TMP}/mnt"
-## mount "${UEFI_TMP}/efi.img" "${UEFI_TMP}/mnt"
-## 
-## mkdir -p "${UEFI_TMP}/mnt/EFI/boot"
-## cp /usr/lib/grub/x86_64-efi/monolithic/grubx64.efi "${UEFI_TMP}/mnt/EFI/boot/bootx64.efi" || \
-## cp /usr/lib/grub/x86_64-efi/grubx64.efi "${UEFI_TMP}/mnt/EFI/boot/bootx64.efi"
-## 
-## mkdir -p "${UEFI_TMP}/mnt/boot/grub"
-## cp "${ISO_DIR}/boot/grub/grub.cfg" "${UEFI_TMP}/mnt/boot/grub/"
-## 
-## umount "${UEFI_TMP}/mnt"
-## cp "${UEFI_TMP}/efi.img" "${ISO_DIR}/boot/grub/"
-## 
-## # Clean up
-## rm -rf "${UEFI_TMP}"
-## 
-## # Also copy the UEFI bootloader to the standard location
-## mkdir -p "${ISO_DIR}/EFI/boot"
-## cp /usr/lib/grub/x86_64-efi/monolithic/grubx64.efi "${ISO_DIR}/EFI/boot/bootx64.efi" 2>/dev/null || \
-## cp /usr/lib/grub/x86_64-efi/grubx64.efi "${ISO_DIR}/EFI/boot/bootx64.efi"
-
-# Copy preseed file
-# cp /config/preseed.cfg "${ISO_DIR}/preseed/"
-
-# Step 4: Create squashfs of the chroot
-echo "[3/4] Creating squashfs of the chroots..."
-mksquashfs "${LIVE_CHROOT_DIR}" "${ISO_DIR}/live/filesystem.squashfs" -comp xz -wildcards
-mksquashfs "${TARGET_CHROOT_DIR}" "${ISO_DIR}/live/target.squashfs" -comp xz -wildcards
-
-# Step 5: Generate the ISO
-echo "[4/4] Generating the ISO..."
-
-# Basic options
-XORRISO_OPTS="-as mkisofs -r -J -joliet-long"
-
-# Volume ID and publisher
-XORRISO_OPTS+=" -V 'WHISTLEKUBE_INSTALLER'"
-XORRISO_OPTS+=" -publisher 'Whistlekube'"
-
-# BIOS boot options
-XORRISO_OPTS+=" -isohybrid-mbr ${WORK_DIR}/isohdpfx.bin"
-XORRISO_OPTS+=" -b boot/isolinux/isolinux.bin"
-XORRISO_OPTS+=" -c boot/isolinux/boot.cat"
-XORRISO_OPTS+=" -boot-load-size 4 -boot-info-table -no-emul-boot"
-
-# UEFI boot options
-XORRISO_OPTS+=" -eltorito-alt-boot"
-XORRISO_OPTS+=" -e boot/grub/efi.img"
-XORRISO_OPTS+=" -no-emul-boot"
-XORRISO_OPTS+=" -isohybrid-gpt-basdat"
-
-# Additional options
-XORRISO_OPTS+=" -partition_offset 16"
-XORRISO_OPTS+=" -append_partition 2 0xEF ${WORK_DIR}/efi.img"
-
-# Output file and source directory
-XORRISO_OPTS+=" -o ${ISO_DIR}/${ISO_FILENAME} ${ISO_DIR}"
-
-# Execute xorriso with all options
-eval xorriso ${XORRISO_OPTS}
-
-# Post-process the ISO to make it hybrid
-echo "Running isohybrid to finalize USB bootability..."
-isohybrid --uefi "${ISO_DIR}/${ISO_FILENAME}" || echo "Warning: isohybrid command failed, but xorriso should have created a hybrid image already."
-
-#xorriso -as mkisofs \
-#    -R -J -joliet-long \
-#    -V "Whistlekube Installer ${BUILD_VERSION}" \
-#    -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
-#    -c boot/isolinux/boot.cat \
-#    -b boot/isolinux/isolinux.bin \
-#    -no-emul-boot -boot-load-size 4 -boot-info-table \
-#    -eltorito-alt-boot \
-#    -append_partition 2 0xef "${ISO_DIR}/EFI/boot/bootx64.efi" \
-#    -e EFI/boot/bootx64.efi \
-#    -no-emul-boot \
-#    -isohybrid-gpt-basdat \
-#    -isohybrid-apm-hfsplus \
-#    -o "${OUTPUT_DIR}/${ISO_FILENAME}" \
-#    "${ISO_DIR}"
-
-
-#xorriso -as mkisofs \
-#    -A "Whistlekube ${BUILD_VERSION}" \
-#    -b boot/isolinux/isolinux.bin \
-#    -c boot/isolinux/boot.cat \
-#    -no-emul-boot -boot-load-size 4 -boot-info-table \
-#    -eltorito-alt-boot \
-#    -e boot/grub/efi.img \
-#    -no-emul-boot \
-#    -isohybrid-gpt-basdat \
-#    -o "${OUTPUT_DIR}/${ISO_FILENAME}" \
-#    "${ISO_DIR}"
-
-# Make the image hybrid
-#echo "Making the ISO bootable on USB drives..."
-#isohybrid --uefi "${OUTPUT_DIR}/${ISO_FILENAME}" || echo "Warning: isohybrid command failed, USB boot may not work properly."
+# Create the ISO
+echo "Creating the ISO..."
+build_iso
 
 # Calculate checksum
-cd "${ISO_DIR}"
-sha256sum "${ISO_FILENAME}" > "${ISO_FILENAME}.sha256"
+sha256sum "${ISO_OUTPUT_FILE}" > "${ISO_OUTPUT_FILE}.sha256"
 
 echo "======================================================"
 echo "Build complete!"
-echo "ISO file: ${ISO_DIR}/${ISO_FILENAME}"
-echo "SHA256: $(cat ${ISO_DIR}/${ISO_FILENAME}.sha256)"
+echo "ISO file: ${ISO_OUTPUT_FILE}"
+echo "SHA256: $(cat ${ISO_OUTPUT_FILE}.sha256)"
 echo "======================================================"
 
 # Clean up
