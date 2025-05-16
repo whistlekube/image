@@ -16,14 +16,14 @@ ARTIFACT_BUILD_TARGET ?= artifact
 DEBIAN_RELEASE ?= trixie
 # The version of the build
 BUILD_VERSION ?= dev-${BUILD_DATE}-${GIT_COMMIT}
-# The name of the Docker image to build
-IMAGE_NAME ?= whistlekube-installer
 # The output directory for the build
 OUTPUT_DIR ?= $(shell pwd)/output
 # The filename of the ISO to build
 ISO_FILENAME ?= whistlekube-${DEBIAN_RELEASE}-${BUILD_VERSION}.iso
 # The docker target to build
 BUILD_TARGET ?= $(ARTIFACT_BUILD_TARGET)
+# The name of the Docker image to build
+IMAGE_NAME ?= whistlekube-installer-${BUILD_TARGET}
 # Custom build flags to pass to docker buildx
 EXTRA_BUILD_FLAGS ?=
 # Debian mirror to use for the build
@@ -92,6 +92,10 @@ targetfs:
 livefs:
 	@$(MAKE) build BUILD_TARGET=live-builder $(MAKEFLAGS)
 
+# Build the ISO (but not the final artifact container)
+iso:
+	@$(MAKE) build BUILD_TARGET=iso-builder $(MAKEFLAGS)
+
 # Create a new buildx builder with insecure options
 docker-buildx-enable:
 	@echo "Creating new buildx builder with insecure options..."
@@ -111,16 +115,26 @@ clean:
 	@echo "Clean completed"
 
 # Run an interactive shell in the Docker container
-shell:
+shell: build
 	@echo "Running interactive shell in Docker container for target $(BUILD_TARGET)..."
-	# Build the image with --load to ensure the image is available locally
-	@make build BUILD_TARGET=$(BUILD_TARGET) BUILD_FLAGS="$(BUILD_FLAGS) --load"
 	# Run shell in container
 	@docker run --rm -it \
 		--privileged \
-		-t $(IMAGE_NAME)-$(BUILD_TARGET) \
+		-t $(IMAGE_NAME) \
 		/bin/bash
 
-shell-chroot: chroot
+shell-chroot:
 	@echo "Running interactive shell in chroot-builder container..."
 	@$(MAKE) shell BUILD_TARGET=chroot-builder $(MAKEFLAGS)
+
+shell-target:
+	@echo "Running interactive shell in target-builder container..."
+	@$(MAKE) shell BUILD_TARGET=target-builder $(MAKEFLAGS)
+
+shell-live:
+	@echo "Running interactive shell in live-builder container..."
+	@$(MAKE) shell BUILD_TARGET=live-builder $(MAKEFLAGS)
+
+shell-iso:
+	@echo "Running interactive shell in iso-builder container..."
+	@$(MAKE) shell BUILD_TARGET=iso-builder $(MAKEFLAGS)
