@@ -2,21 +2,19 @@
 set -eauox pipefail
 
 # Build variables
-BUILD_VERSION=${BUILD_VERSION:-"$(date +%Y%m%d)"}
-DEBIAN_RELEASE=${DEBIAN_RELEASE:-"trixie"}
-DEBIAN_ARCH=${DEBIAN_ARCH:-"amd64"}
-ISO_OUTPUT_FILE=${ISO_OUTPUT_FILE:-"whistlekube-installer-${DEBIAN_RELEASE}-${DEBIAN_ARCH}-${BUILD_VERSION}.iso"}
 ISO_LABEL=${ISO_LABEL:-"WHISTLEKUBE_ISO"}
 ISO_APPID=${ISO_APPID:-"Whistlekube Installer"}
 ISO_PUBLISHER=${ISO_PUBLISHER:-"Whistlekube"}
 ISO_PREPARER=${ISO_PREPARER:-"Built with xorriso"}
+ISO_OUTPUT_PATH="${ISO_OUTPUT_PATH:-/whistlekube-installer.iso}"
 
 # Directories
 ISO_DIR="${ISO_DIR:-$(pwd)/iso}"
 EFI_MOUNT_POINT="${EFI_MOUNT_POINT:-/efimount}"
 HYBRID_MBR_PATH="${HYBRID_MBR_PATH:-/usr/lib/grub/i386-pc/boot_hybrid.img}"
 
-
+# Build the GRUB core image for BIOS boot
+# Writes the core.img to the ISO_DIR/boot/grub directory
 build_grub_bios() {
   grub-mkimage \
     -O i386-pc-eltorito \
@@ -28,6 +26,8 @@ build_grub_bios() {
     part_msdos part_gpt fat ext2
 }
 
+# Build the UEFI boot image
+# Writes the efiboot.img to the ISO_DIR/EFI directory
 build_grub_uefi() {
   mkdir -p "${ISO_DIR}/EFI" "${EFI_MOUNT_POINT}"
   dd if=/dev/zero of="${ISO_DIR}/EFI/efiboot.img" bs=1M count=10
@@ -48,6 +48,8 @@ build_grub_uefi() {
   rmdir "${EFI_MOUNT_POINT}"
 }
 
+# Build the final ISO
+# This is a hybrid ISO that can be booted from BIOS or UEFI and installed on a CD or USB drive
 build_iso() {
   echo "Creating bootable ISO..."
   xorriso \
@@ -70,18 +72,9 @@ build_iso() {
     -isohybrid-mbr ${HYBRID_MBR_PATH} \
     -append_partition 2 0xef "${ISO_DIR}/EFI/efiboot.img" \
     -isohybrid-gpt-basdat \
-    -output "${ISO_OUTPUT_FILE}" \
+    -output "${ISO_OUTPUT_PATH}" \
     "${ISO_DIR}"
 }
-
-echo "======================================================"
-echo "Building Whistlekube Installer ISO"
-echo "======================================================"
-echo "Build Version: ${BUILD_VERSION}"
-echo "Debian Release: ${DEBIAN_RELEASE}"
-echo "Architecture: ${DEBIAN_ARCH}"
-echo "ISO dir: ${ISO_DIR}"
-echo "======================================================"
 
 # Create bootable ISO directory structure
 mkdir -p "${ISO_DIR}"/{boot/{isolinux,grub},EFI/boot,install,preseed,live}
@@ -115,12 +108,12 @@ echo "Creating the ISO..."
 build_iso
 
 # Calculate checksum
-sha256sum "${ISO_OUTPUT_FILE}" > "${ISO_OUTPUT_FILE}.sha256"
+sha256sum "${ISO_OUTPUT_PATH}" > "${ISO_OUTPUT_PATH}.sha256"
 
 echo "======================================================"
 echo "Build complete!"
-echo "ISO file: ${ISO_OUTPUT_FILE}"
-echo "SHA256: $(cat ${ISO_OUTPUT_FILE}.sha256)"
+echo "ISO file: ${ISO_OUTPUT_PATH}"
+echo "SHA256: $(cat ${ISO_OUTPUT_PATH}.sha256)"
 echo "======================================================"
 
 # Clean up

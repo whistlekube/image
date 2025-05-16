@@ -1,11 +1,12 @@
 # syntax=docker/dockerfile:1-labs
 
 # Global build arguments
-ARG DEBIAN_RELEASE=trixie
-ARG DEBIAN_MIRROR=http://deb.debian.org/debian
+ARG DEBIAN_RELEASE="trixie"
+ARG BUILD_VERSION="unknown"
+ARG DEBIAN_MIRROR="http://deb.debian.org/debian"
+ARG ISO_FILENAME="whistlekube-${DEBIAN_RELEASE}-${BUILD_VERSION}.iso"
 
-ARG ISO_OUTPUT_FILE="/whistlekube-installer.iso"
-
+# === Base builder ===
 FROM debian:${DEBIAN_RELEASE}-slim AS base-builder
 
 # Pass global build arguments to this stage
@@ -88,9 +89,9 @@ RUN --security=insecure \
     echo "=== Chroot configured for target ==="
 
 # === ISO builder ===
+# This stage builds the grub images and the final bootable ISO
 FROM base-builder AS iso-builder
 
-ARG ISO_OUTPUT_FILE
 ARG ISO_LABEL="WHISTLEKUBE_ISO"
 ARG ISO_APPID="Whistlekube Installer"
 ARG ISO_PUBLISHER="Whistlekube"
@@ -196,13 +197,13 @@ RUN --security=insecure \
 # === Artifact ===
 FROM scratch AS artifact
 
-ARG ISO_OUTPUT_FILE
+ARG ISO_FILENAME
 
 # Labels following OCI image spec
-LABEL org.opencontainers.image.title="Whistlekube Installer ISO Builder"
-LABEL org.opencontainers.image.description="A Docker image to build whistlekube installer ISOs"
-LABEL org.opencontainers.image.version="1.0"
+LABEL org.opencontainers.image.title="Whistlekube Installer ISO Artifacts"
+LABEL org.opencontainers.image.description="Image containing the whistlekube installer ISOs"
+LABEL org.opencontainers.image.version="1.0.0"
 LABEL org.opencontainers.image.authors="Joe Kramer <joe@whistlekube.com>"
 LABEL org.opencontainers.image.source="https://github.com/whistlekube/image"
 
-COPY --from=iso-builder ${ISO_OUTPUT_FILE} /
+COPY --from=iso-builder /whistlekube-installer.iso /${ISO_FILENAME}
