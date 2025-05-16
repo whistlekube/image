@@ -1,4 +1,3 @@
-
 .PHONY: all build clean chroot targetfs livefs docker-buildx-enable shell shell-chroot help
 
 # === Environment ===
@@ -40,9 +39,9 @@ BUILD_FLAGS := --allow security.insecure \
 # If this is the artifact build target, add the output directory flag
 # Otherwise, load the image into the local Docker daemon
 ifeq ($(BUILD_TARGET), $(ARTIFACT_BUILD_TARGET))
-	BUILD_FLAGS += --output type=local,dest=$(OUTPUT_DIR)
+    BUILD_FLAGS += --output type=local,dest=$(OUTPUT_DIR)
 else
-	BUILD_FLAGS += --load
+    BUILD_FLAGS += --load
 endif
 
 BUILD_FLAGS += $(EXTRA_BUILD_FLAGS)
@@ -59,6 +58,13 @@ help:
 	@echo "  clean  - Remove output files and temporary data"
 	@echo "  shell  - Start an interactive shell in the Docker container"
 	@echo "  help   - Show this help message"
+	@echo ""
+	@echo "Options:"
+	@echo "  BUILD_TARGET=xxx - Specify build target (default: artifact)"
+	@echo "  DEBIAN_RELEASE=xxx - Specify Debian release (default: trixie)"
+	@echo "  DEBIAN_MIRROR=xxx - Specify Debian mirror (default: http://deb.debian.org/debian)"
+	@echo "  BUILD_VERSION=xxx - Specify build version (default: dev-BUILD_DATE-GIT_COMMIT)"
+	@echo "  ISO_FILENAME=xxx - Specify ISO filename (default: whistlekube-DEBIAN_RELEASE-BUILD_VERSION.iso)"
 
 # Build a docker target (default is artifact, which builds the full ISO)
 build:
@@ -67,12 +73,17 @@ build:
 	@echo "Building $(BUILD_TARGET) target..."
 	@echo "================================================"
 	@echo "Debian release: $(DEBIAN_RELEASE)"
+	@echo "Debian mirror: $(DEBIAN_MIRROR)"
 	@echo "Git branch: $(GIT_BRANCH)"
 	@echo "Git commit: $(GIT_COMMIT)"
 	@echo "Build version: $(BUILD_VERSION)"
 	@echo "ISO filename: $(ISO_FILENAME)"
 	@echo "Output directory: $(OUTPUT_DIR)"
 	@echo "Docker image name: $(IMAGE_NAME)"
+	@echo "Extra build flags: $(EXTRA_BUILD_FLAGS)"
+	@echo "Build user: $(USER)"
+	@echo "Build host: $(shell hostname -f)"
+	@echo "Timestamp: $(shell date -u +%Y-%m-%dT%H:%M:%SZ)"
 	@echo "================================================"
 	@echo
 

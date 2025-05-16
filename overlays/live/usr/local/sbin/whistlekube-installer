@@ -105,9 +105,9 @@ main() {
   setup_ui
 
   local welcome_msg="Welcome to the Whistlekube Installer!\n\n \
-  This will install a minimal Whistlekube system to the selected disk.\n \
-  The configuration can be completed after the installation is complete via the web interface.\n \
-  Documentation can be found at https://whistlekube.com/docs"
+  This will install a minimal Whistlekube system to the selected disk. \
+  The configuration can be completed after the installation is complete via the web interface.\n\n \
+  Documentation at https://whistlekube.com/docs"
   dialog --msgbox "$welcome_msg" 15 60
 
   # Select disk to install to

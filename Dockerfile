@@ -21,8 +21,6 @@ ARG TARGETARCH
 # Set common environment variables
 ENV ROOTFS_DIR="/rootfs"
 ENV CHROOT_BOOTSTRAP_DIR="/whistlekube-bootstrap"
-ENV DEBIAN_RELEASE=${DEBIAN_RELEASE}
-ENV DEBIAN_MIRROR=${DEBIAN_MIRROR}
 ENV DEBIAN_FRONTEND=noninteractive
 ENV DEBCONF_NONINTERACTIVE_SEEN=true
 ENV DEBIAN_ARCH="${TARGETARCH}"
@@ -33,7 +31,9 @@ FROM base-builder AS chroot-builder
 
 # Install required packages for the build process
 # Then run debootstrap to create the minimal Debian system
-RUN apt-get update && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
         debootstrap \
         ca-certificates \
@@ -107,7 +107,9 @@ ENV EFI_MOUNT_POINT="/efimount"
 WORKDIR /build
 
 # Install required packages for the build process
-RUN apt-get update && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
         grub-pc-bin \
         grub-efi-amd64-bin \
