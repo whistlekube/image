@@ -31,6 +31,7 @@ FROM base AS debootstrap-builder
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         debootstrap \
+        ca-certificates \
         squashfs-tools && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
