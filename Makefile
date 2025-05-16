@@ -86,15 +86,15 @@ chroot:
 
 # Build just the target squashfs filesystem
 targetfs:
-	@$(MAKE) build BUILD_TARGET=target-builder $(MAKEFLAGS)
+	@$(MAKE) build BUILD_TARGET=targetfs-build $(MAKEFLAGS)
 
 # Build the live squashfs filesystem, kernel, and initrd
 livefs:
-	@$(MAKE) build BUILD_TARGET=live-builder $(MAKEFLAGS)
+	@$(MAKE) build BUILD_TARGET=livefs-build $(MAKEFLAGS)
 
 # Build the ISO (but not the final artifact container)
 iso:
-	@$(MAKE) build BUILD_TARGET=iso-builder $(MAKEFLAGS)
+	@$(MAKE) build BUILD_TARGET=iso-build $(MAKEFLAGS)
 
 # Create a new buildx builder with insecure options
 docker-buildx-enable:
@@ -127,14 +127,14 @@ shell-chroot:
 	@echo "Running interactive shell in chroot-builder container..."
 	@$(MAKE) shell BUILD_TARGET=chroot-builder $(MAKEFLAGS)
 
-shell-target:
-	@echo "Running interactive shell in target-builder container..."
-	@$(MAKE) shell BUILD_TARGET=target-builder $(MAKEFLAGS)
+shell-targetfs:
+	@echo "Running interactive shell in targetfs-build container..."
+	@$(MAKE) shell BUILD_TARGET=targetfs-build $(MAKEFLAGS)
 
-shell-live:
-	@echo "Running interactive shell in live-builder container..."
-	@$(MAKE) shell BUILD_TARGET=live-builder $(MAKEFLAGS)
+shell-livefs:
+	@echo "Running interactive shell in livefs-build container..."
+	@$(MAKE) shell BUILD_TARGET=livefs-build $(MAKEFLAGS)
 
 shell-iso:
-	@echo "Running interactive shell in iso-builder container..."
-	@$(MAKE) shell BUILD_TARGET=iso-builder $(MAKEFLAGS)
+	@echo "Running interactive shell in iso-build container..."
+	@$(MAKE) shell BUILD_TARGET=iso-build $(MAKEFLAGS)

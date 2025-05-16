@@ -13,56 +13,6 @@ setup_ui() {
   export DIALOG_BACKTITLE="Whistlekube Installer"
 }
 
-# Function to select locale
-select_locale() {
-  # Get list of available locales
-  local locales=$(locale -a | sort)
-  local locale_list=""
-  local i=1
-  
-  for loc in $locales; do
-    locale_list="$locale_list $i $loc"
-    i=$((i+1))
-  done
-
-  # Show locale selection dialog
-  local selected=$(dialog --stdout --title "Locale Selection" \
-    --menu "Select system locale:" 20 60 10 $locale_list)
-  
-  if [ -z "$selected" ]; then
-    return 1
-  fi
-
-  # Get the actual locale name from the selection
-  local selected_locale=$(echo "$locales" | sed -n "${selected}p")
-  echo "$selected_locale"
-}
-
-# Function to select keymap
-select_keymap() {
-  # Get list of available keymaps
-  local keymaps=$(find /usr/share/keymaps -type f -name "*.map.gz" | sed 's|/usr/share/keymaps/||;s|.map.gz||' | sort)
-  local keymap_list=""
-  local i=1
-  
-  for km in $keymaps; do
-    keymap_list="$keymap_list $i $km"
-    i=$((i+1))
-  done
-
-  # Show keymap selection dialog
-  local selected=$(dialog --stdout --title "Keyboard Layout" \
-    --menu "Select keyboard layout:" 20 60 10 $keymap_list)
-  
-  if [ -z "$selected" ]; then
-    return 1
-  fi
-
-  # Get the actual keymap name from the selection
-  local selected_keymap=$(echo "$keymaps" | sed -n "${selected}p")
-  echo "$selected_keymap"
-}
-
 # Function to partition disk
 partition_disk() {
   local disk="$1"
@@ -139,27 +89,13 @@ install_bootloader() {
 # Function to configure system
 configure_system() {
   # Set hostname
-  echo "firewall" > "$TARGET_MOUNT/etc/hostname"
+  echo "whistlekube" > "$TARGET_MOUNT/etc/hostname"
 
   # Configure network (example)
   cat > "$TARGET_MOUNT/etc/network/interfaces.d/eth0" << EOF
 auto eth0
 iface eth0 inet dhcp
 EOF
-
-  # Configure locale
-  local selected_locale=$(select_locale)
-  if [ -n "$selected_locale" ]; then
-    echo "LANG=$selected_locale" > "$TARGET_MOUNT/etc/locale.conf"
-    echo "LC_ALL=$selected_locale" >> "$TARGET_MOUNT/etc/locale.conf"
-    chroot "$TARGET_MOUNT" locale-gen
-  fi
-
-  # Configure keymap
-  local selected_keymap=$(select_keymap)
-  if [ -n "$selected_keymap" ]; then
-    echo "KEYMAP=$selected_keymap" > "$TARGET_MOUNT/etc/vconsole.conf"
-  fi
 
   # Additional configuration as needed
 }
@@ -168,10 +104,10 @@ EOF
 main() {
   setup_ui
 
-  local welcome_msg="Welcome to the Whistlekube Installer!\n\n" \
-  "This will install a minimal Whistlekube system to the selected disk.\n" \
-  "The configuration can be completed after the installation is complete via the web interface.\n" \
-  "Documentation can be found at https://whistlekube.com/docs"
+  local welcome_msg="Welcome to the Whistlekube Installer!\n\n \
+  This will install a minimal Whistlekube system to the selected disk.\n \
+  The configuration can be completed after the installation is complete via the web interface.\n \
+  Documentation can be found at https://whistlekube.com/docs"
   dialog --msgbox "$welcome_msg" 15 60
 
   # Select disk to install to
