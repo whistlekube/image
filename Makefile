@@ -60,7 +60,6 @@ clean:
 	@rm -rf $(OUTPUT_DIR)
 	@docker rm -f $(IMAGE_NAME) || true
 	@docker rmi -f $(IMAGE_NAME) || true
-	@docker rmi -f $(IMAGE_NAME)-builder || true
 	@docker system prune -a -f --volumes || true
 	@docker buildx prune --all || true
 	@echo "Clean completed"

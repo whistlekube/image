@@ -47,31 +47,32 @@ RUN echo "=== Debootstraping base rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE}
                 "${DEBIAN_MIRROR}" && \
     echo "=== Debootstrap DONE ==="
 
+COPY /overlays/chroot-base/ "${ROOTFS_DIR}/"
 
 # Setup live chroot environment, run configure-chroot.sh, and clean up
 FROM debootstrap-builder AS chroot-live-builder
 
-COPY /chroot-live/overlay/ "${ROOTFS_DIR}/"
+COPY /overlays/live/ "${ROOTFS_DIR}/"
 #COPY /chroot-live/install.sh "${ROOTFS_DIR}${CHROOT_INSTALLER_DIR}/layer/install.sh"
 #COPY /chroot-live/packages.list "${ROOTFS_DIR}${CHROOT_INSTALLER_DIR}/layer/packages.list"
 #COPY /chroot-live/postinstall.sh "${ROOTFS_DIR}${CHROOT_INSTALLER_DIR}/layer/postinstall.sh"
-COPY /scripts/chroot-live.sh "${ROOTFS_DIR}/chroot-live.sh"
+#COPY /scripts/chroot-live.sh "${ROOTFS_DIR}/chroot-live.sh"
 RUN --security=insecure \
     echo "=== Configuring live chroot for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
-    chroot "${ROOTFS_DIR}" /chroot-live.sh && \
+    chroot "${ROOTFS_DIR}" /chroot-install.sh && \
     echo "=== Copying kernel and initrd from live chroot ===" && \
     ls -la "${ROOTFS_DIR}/boot" && \
     cp ${ROOTFS_DIR}/boot/vmlinuz-* "/vmlinuz" && \
     cp ${ROOTFS_DIR}/boot/initrd.img-* "/initrd.img" && \
     echo "=== Cleaning up live chroot ===" && \
-    rm -rf ${ROOTFS_DIR}/{boot,chroot-live.sh,initrd.img*,vmlinuz*} && \
+    rm -rf ${ROOTFS_DIR}/{boot,chroot-install.sh,initrd.img*,vmlinuz*} && \
     echo "=== Squashing live filesystem ===" && \
     mksquashfs "${ROOTFS_DIR}" "/filesystem.squashfs" -comp xz -no-xattrs -no-fragments -wildcards -b 1M -e boot && \
     echo "=== Chroot configured for live ==="
 
 FROM debootstrap-builder AS chroot-target-builder
 
-COPY /overlay-target/ "${ROOTFS_DIR}/"
+COPY /overlays/target/ "${ROOTFS_DIR}/"
 
 RUN --security=insecure \
     echo "=== Configuring target chroot for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
@@ -118,7 +119,7 @@ COPY --from=chroot-live-builder /vmlinuz "${ISO_DIR}/live/vmlinuz"
 COPY --from=chroot-live-builder /initrd.img "${ISO_DIR}/live/initrd.img"
 COPY --from=chroot-target-builder /filesystem.squashfs "${ISO_DIR}/installer/target.squashfs"
 # Copy the GRUB configuration file
-COPY /iso-files/boot/grub/grub.cfg ${ISO_DIR}/boot/grub/grub.cfg
+COPY /overlays/iso/ ${ISO_DIR}/
 
 # Build the GRUB images for BIOS and EFI boot and the final ISO
 RUN --security=insecure \
