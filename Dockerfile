@@ -93,13 +93,6 @@ RUN --security=insecure \
 # This stage builds the grub images and the final bootable ISO
 FROM base-builder AS iso-builder
 
-# Labels following OCI image spec
-LABEL org.opencontainers.image.title="Whistlekube Installer ISO Builder"
-LABEL org.opencontainers.image.description="Image to build the whistlekube installer ISO"
-LABEL org.opencontainers.image.version="1.0.0"
-LABEL org.opencontainers.image.authors="Joe Kramer <joe@whistlekube.com>"
-LABEL org.opencontainers.image.source="https://github.com/whistlekube/image"
-
 ARG ISO_LABEL="WHISTLEKUBE_ISO"
 ARG ISO_APPID="Whistlekube Installer"
 ARG ISO_PUBLISHER="Whistlekube"
@@ -140,70 +133,17 @@ COPY /scripts/build-iso.sh .
 # Build the GRUB images for BIOS and EFI boot and the final ISO
 RUN --security=insecure \
     ./build-iso.sh
-##     echo "=== Building GRUB for BIOS boot ===" && \
-##     grub-mkimage \
-##         -O i386-pc-eltorito \
-##         -o "${ISO_DIR}/boot/grub/core.img" \
-##         -p /boot/grub \
-##         biosdisk iso9660 \
-##         normal configfile \
-##         echo linux search search_label \
-##         part_msdos part_gpt fat ext2 && \
-##     echo "=== Building GRUB for EFI boot ===" && \
-##     mkdir -p ${ISO_DIR}/EFI && \
-##     dd if=/dev/zero of="${ISO_DIR}/EFI/efiboot.img" bs=1M count=10 && \
-##     mkfs.vfat -F 32 "${ISO_DIR}/EFI/efiboot.img" && \
-##     mkdir -p "${EFI_MOUNT_POINT}" && \
-##     mount -o loop "${ISO_DIR}/EFI/efiboot.img" "${EFI_MOUNT_POINT}" && \
-##     mkdir -p "${EFI_MOUNT_POINT}/EFI/BOOT" && \
-##     grub-mkimage \
-##         -O x86_64-efi \
-##         -o "${EFI_MOUNT_POINT}/EFI/BOOT/BOOTX64.EFI" \
-##         -p /boot/grub \
-##         iso9660 normal configfile \
-##         echo linux search search_label \
-##         part_msdos part_gpt fat ext2 efi_gop efi_uga \
-##         all_video font && \
-##     cp "${ISO_DIR}/boot/grub/grub.cfg" "${EFI_MOUNT_POINT}/EFI/BOOT/grub.cfg" && \
-##     umount "${EFI_MOUNT_POINT}" && \
-##     rmdir "${EFI_MOUNT_POINT}" && \
-##     find ${ISO_DIR} && \
-##     xorriso \
-##         -as mkisofs \
-##         -iso-level 3 \
-##         \
-##         # Filesystem extensions for compatibility and long filenames
-##         -rock --joliet --joliet-long \
-##         -full-iso9660-filenames \
-##         \
-##         # ISO Volume Information
-##         -volid "${ISO_LABEL}" \
-##         -appid "${ISO_APPID}" \
-##         -publisher "${ISO_PUBLISHER}" \
-##         -preparer "${ISO_PREPARER}" \
-##         \
-##         # El Torito primary boot entry (for BIOS CD/DVD and BIOS USB via hybrid MBR)
-##         # Points to the GRUB2 BIOS core image on the ISO
-##         -eltorito-boot boot/grub/core.img \
-##             -no-emul-boot \
-##             -boot-load-size 4 \
-##             -boot-info-table \
-##             --grub2-boot-info \
-##         \
-##         # El Torito alternative boot entry (for UEFI CD/DVD)
-##         # Points to the EFI system image on the ISO
-##         -eltorito-alt-boot \
-##             -e EFI/efiboot.img \
-##             -no-emul-boot \
-##         \
-##         # Hybrid MBR configuration
-##         -isohybrid-mbr /usr/lib/grub/i386-pc/boot_hybrid.img \
-##         -append_partition 2 0xef "${ISO_DIR}/EFI/efiboot.img" \
-##         -isohybrid-gpt-basdat \
-##         -output "/${ISO_OUTPUT_FILE}" \
-##         "${ISO_DIR}" && \
-##     echo "=== ISO build complete ==="
 
 # === Artifact ===
+# This stage builds the final artifact container
+# It simply copies the output directory from the ISO builder stage
 FROM scratch AS artifact
+
+# Labels following OCI image spec
+LABEL org.opencontainers.image.title="Whistlekube Installer ISO Builder"
+LABEL org.opencontainers.image.description="Image to build the whistlekube installer ISO"
+LABEL org.opencontainers.image.version="1.0.0"
+LABEL org.opencontainers.image.authors="Joe Kramer <joe@whistlekube.com>"
+LABEL org.opencontainers.image.source="https://github.com/whistlekube/image"
+
 COPY --from=iso-builder ${OUTPUT_DIR}/ ${OUTPUT_DIR}/
