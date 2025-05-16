@@ -271,13 +271,13 @@ finish_installation() {
     umount -l "$TARGET_MNT/dev" 2>/dev/null || true
     umount -l "$TARGET_MNT/proc" 2>/dev/null || true
     umount -l "$TARGET_MNT/sys" 2>/dev/null || true
-    
+
     if is_uefi; then
         umount "$EFI_MNT" 2>/dev/null || true
     fi
-    
+
     umount "$TARGET_MNT" 2>/dev/null || true
-    
+
     echo -e "${GREEN}Installation completed successfully!${NC}"
     echo "You can now reboot into your new WhistleKube Linux system."
 }
