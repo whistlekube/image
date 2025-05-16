@@ -184,6 +184,9 @@ configure_system() {
         UUID_EFI=$(blkid -s UUID -o value "$efi_part")
         echo "UUID=$UUID_EFI /boot/efi vfat umask=0077 0 1" >> "$TARGET_MNT/etc/fstab"
     fi
+    
+    # Set up root account
+    echo "root:whistlekube" | chpasswd
 
     # Set hostname
     echo "whistlekube" > "$TARGET_MNT/etc/hostname"
@@ -277,7 +280,6 @@ finish_installation() {
     
     echo -e "${GREEN}Installation completed successfully!${NC}"
     echo "You can now reboot into your new WhistleKube Linux system."
-    read -p "Press Enter to continue..." dummy
 }
 
 # Main installation workflow
@@ -326,14 +328,13 @@ main() {
     #install_system
     configure_system
     install_bootloader "$disk"
-    read -p "Press Enter to continue..." dummy
     finish_installation
 
     # Unmount target
     #umount -R "$TARGET_MOUNT"
 
     # Installation complete
-    dialog --title "Installation Complete" --msgbox "Firewall system has been installed. The system will now reboot." 7 60
+    dialog --title "Installation Complete" --msgbox "Whistlekube system has been installed to ${disk}. The system will now reboot." 7 60
 
     # Reboot
     reboot

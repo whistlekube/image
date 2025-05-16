@@ -31,6 +31,9 @@ apt-get download \
     efibootmgr
 popd
 
+# Set default root password
+echo "root:whistlekube" | chpasswd
+
 # Cleanup apt cache
 cleanup_apt
 
