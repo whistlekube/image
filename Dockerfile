@@ -31,17 +31,15 @@ ENV DEBIAN_ARCH="${TARGETARCH}"
 FROM base-builder AS chroot-builder
 
 # Install required packages for the build process
+# Then run debootstrap to create the minimal Debian system
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         debootstrap \
         ca-certificates \
         squashfs-tools && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Run debootstrap to create the minimal Debian system
-# This forms the base for both the target and live chroot environments
-RUN echo "=== Debootstraping base rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
+    rm -rf /var/lib/apt/lists/* && \
+    echo "=== Debootstraping base rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
     mkdir -p ${ROOTFS_DIR} && \
     debootstrap --arch="${DEBIAN_ARCH}" \
                 --variant=minbase \
@@ -207,7 +205,5 @@ RUN --security=insecure \
 ##     echo "=== ISO build complete ==="
 
 # === Artifact ===
-#FROM scratch AS artifact
-#
-#
-#COPY --from=iso-builder ${OUTPUT_DIR}/ ${OUTPUT_DIR}/
+FROM scratch AS artifact
+COPY --from=iso-builder ${OUTPUT_DIR}/ ${OUTPUT_DIR}/

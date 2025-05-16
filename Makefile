@@ -1,12 +1,17 @@
 
-.PHONY: all build clean docker-build docker-buildx-enable shell help
+.PHONY: all build clean chroot targetfs livefs docker-buildx-enable shell shell-chroot help
 
+# === Environment ===
 # The date of the build
 BUILD_DATE := $(shell date -u +%Y%m%d)
+# The git branch of the build
+GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "UNKNOWNBRANCH")
 # The git commit hash of the build
-GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "local")
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "UNKNOWNCOMMIT")
+# The main artifact build target
+ARTIFACT_BUILD_TARGET ?= artifact
 
-# Configuration
+# === Configuration ===
 # The Debian release to base the ISO on
 DEBIAN_RELEASE ?= trixie
 # The version of the build
@@ -18,11 +23,29 @@ OUTPUT_DIR ?= $(shell pwd)/output
 # The filename of the ISO to build
 ISO_FILENAME ?= whistlekube-${DEBIAN_RELEASE}-${BUILD_VERSION}.iso
 # The docker target to build
-BUILD_TARGET ?= iso-builder
+BUILD_TARGET ?= $(ARTIFACT_BUILD_TARGET)
 # Custom build flags to pass to docker buildx
-BUILD_FLAGS ?= ""
+EXTRA_BUILD_FLAGS ?=
 # Debian mirror to use for the build
 DEBIAN_MIRROR ?= http://deb.debian.org/debian
+	
+# Build up the complete set of build flags
+BUILD_FLAGS := --allow security.insecure \
+               --target $(BUILD_TARGET) \
+               --progress=plain \
+               --build-arg DEBIAN_RELEASE=$(DEBIAN_RELEASE) \
+               --build-arg BUILD_VERSION=$(BUILD_VERSION) \
+               --build-arg DEBIAN_MIRROR=$(DEBIAN_MIRROR) \
+
+# If this is the artifact build target, add the output directory flag
+# Otherwise, load the image into the local Docker daemon
+ifeq ($(BUILD_TARGET), $(ARTIFACT_BUILD_TARGET))
+	BUILD_FLAGS += --output type=local,dest=$(OUTPUT_DIR)
+else
+	BUILD_FLAGS += --load
+endif
+
+BUILD_FLAGS += $(EXTRA_BUILD_FLAGS)
 
 # Default target
 all: build
@@ -44,6 +67,7 @@ build:
 	@echo "Building $(BUILD_TARGET) target..."
 	@echo "================================================"
 	@echo "Debian release: $(DEBIAN_RELEASE)"
+	@echo "Git branch: $(GIT_BRANCH)"
 	@echo "Git commit: $(GIT_COMMIT)"
 	@echo "Build version: $(BUILD_VERSION)"
 	@echo "ISO filename: $(ISO_FILENAME)"
@@ -53,32 +77,20 @@ build:
 	@echo
 
 	@mkdir -p $(OUTPUT_DIR)
-	docker buildx build \
-	    --allow security.insecure \
-		--target $(BUILD_TARGET) \
-		--output type=local,src=/output,dest=$(OUTPUT_DIR) \
-		--progress=plain \
-		--build-arg DEBIAN_RELEASE=$(DEBIAN_RELEASE) \
-		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
-		--build-arg DEBIAN_MIRROR=$(DEBIAN_MIRROR) \
-		-t $(IMAGE_NAME) \
-		.
+	docker buildx build $(BUILD_FLAGS) -t $(IMAGE_NAME) .
 	@echo "ISO has been created at $(OUTPUT_DIR)/$(ISO_FILENAME)"
 
-# Build just the live chroot
-build-live:
+# Build just the base chroot
+chroot:
+	@$(MAKE) build BUILD_TARGET=chroot-builder $(MAKEFLAGS)
+
+# Build just the target squashfs filesystem
+targetfs:
+	@$(MAKE) build BUILD_TARGET=target-builder $(MAKEFLAGS)
+
+# Build the live squashfs filesystem, kernel, and initrd
+livefs:
 	@$(MAKE) build BUILD_TARGET=live-builder $(MAKEFLAGS)
-
-# Build Docker image with a configurable target
-docker-build:
-	@echo "Building Installer target $(BUILD_TARGET)..."
-
-	#@docker buildx build --load \
-	#    --allow security.insecure \
-	#	--target $(BUILD_TARGET) \
-	#	--progress=plain \
-	#	-t $(IMAGE_NAME)-$(BUILD_TARGET) \
-	#	.
 
 # Create a new buildx builder with insecure options
 docker-buildx-enable:
@@ -106,6 +118,9 @@ shell:
 	# Run shell in container
 	@docker run --rm -it \
 		--privileged \
-		-v $(OUTPUT_DIR):/output \
 		-t $(IMAGE_NAME)-$(BUILD_TARGET) \
 		/bin/bash
+
+shell-chroot: chroot
+	@echo "Running interactive shell in chroot-builder container..."
+	@$(MAKE) shell BUILD_TARGET=chroot-builder $(MAKEFLAGS)

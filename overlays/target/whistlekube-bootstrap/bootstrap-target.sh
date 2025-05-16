@@ -19,7 +19,7 @@ apt-get install -y --no-install-recommends \
     grub-common
 
 # Cleanup apt cache
-claean_apt
+cleanup_apt
 
 # Unmount filesystems
 unmount_filesystems
