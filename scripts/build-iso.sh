@@ -1,5 +1,5 @@
 #!/bin/bash
-set -eauox pipefail
+set -euo pipefail
 
 # Build variables
 OUTPUT_DIR=${OUTPUT_DIR:-$(pwd)/output}
@@ -87,7 +87,7 @@ if [ ! -f "${ISO_DIR}/live/vmlinuz" ] || \
     echo "Error: Live chroot files not found"
     exit 1
 fi
-if [ ! -f "${ISO_DIR}/installer/target.squashfs" ]; then
+if [ ! -f "${ISO_DIR}/install/filesystem.squashfs" ]; then
     echo "Error: Target chroot filesystem not found"
     exit 1
 fi

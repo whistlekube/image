@@ -101,6 +101,7 @@ ARG ISO_PREPARER="Built with xorriso"
 ARG ISO_FILENAME
 
 ENV ISO_DIR="/iso"
+ENV APT_REPO_DIR="${ISO_DIR}/pool/main/binary"
 ENV ISO_EFI_DIR="${ISO_DIR}/EFI"
 ENV EFI_MOUNT_POINT="/efimount"
 
@@ -114,6 +115,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         grub-pc-bin \
         grub-efi-amd64-bin \
         grub2-common \
+        apt-utils \
         xz-utils \
         xorriso \
         cpio \
@@ -123,11 +125,35 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Setup the apt repository directory
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    mkdir -p ${APT_REPO_DIR} && \
+    apt-get update && \
+    apt-get download \
+        grub-pc \
+        grub-pc-bin \
+        grub-common \
+        grub-efi-amd64 \
+        grub-efi-amd64-bin \
+        grub2-common && \
+    # Move packages to repo directory
+    mv *.deb ${APT_REPO_DIR}/ && \
+    # Create Packages file
+    cd ${APT_REPO_DIR} && \
+    apt-ftparchive packages . > Packages && \
+    gzip -k Packages && \
+    # Create Release file
+    cd .. && \
+    apt-ftparchive release binary > Release && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 # Copy the kernel, initrd, and squashfs files from the chroot builders
 COPY --from=livefs-build ${OUTPUT_DIR}/filesystem.squashfs ${ISO_DIR}/live/filesystem.squashfs
 COPY --from=livefs-build ${OUTPUT_DIR}/vmlinuz ${ISO_DIR}/live/vmlinuz
 COPY --from=livefs-build ${OUTPUT_DIR}/initrd.img ${ISO_DIR}/live/initrd.img
-COPY --from=targetfs-build ${OUTPUT_DIR}/filesystem.squashfs ${ISO_DIR}/installer/target.squashfs
+COPY --from=targetfs-build ${OUTPUT_DIR}/filesystem.squashfs ${ISO_DIR}/install/filesystem.squashfs
 # Copy the ISO overlay files
 COPY /overlays/iso/ ${ISO_DIR}/
 # Copy the ISO build script

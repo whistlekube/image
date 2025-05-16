@@ -10,6 +10,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/functions.sh"
 # Mount filesystems
 mount_filesystems
 
+# To ensure apt doesn't hang waiting for input
+echo 'APT::Get::Assume-Yes "true";' > /etc/apt/apt.conf.d/90assumeyes
+echo 'APT::Install-Recommends "false";' > /etc/apt/apt.conf.d/90recommends
+echo 'APT::Install-Suggests "false";' > /etc/apt/apt.conf.d/90suggests
+echo 'Dpkg::Options {"--force-confnew";}' > /etc/apt/apt.conf.d/90dpkgoptions
+
 # Update and install packages
 export DEBIAN_FRONTEND=noninteractive
 apt-get update

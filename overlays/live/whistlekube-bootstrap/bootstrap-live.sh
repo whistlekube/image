@@ -17,6 +17,7 @@ apt-get install -y --no-install-recommends \
     live-config \
     live-config-systemd \
     dialog \
+    squashfs-tools \
     parted gdisk e2fsprogs lvm2 cryptsetup dosfstools \
     ca-certificates
 

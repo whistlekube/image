@@ -16,7 +16,8 @@ export DEBIAN_FRONTEND=noninteractive
 # Install packages specific to the target environment
 apt-get update
 apt-get install -y --no-install-recommends \
-    grub-common
+    grub-common \
+    ucf
 
 # Cleanup apt cache
 cleanup_apt
