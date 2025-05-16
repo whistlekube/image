@@ -11,18 +11,17 @@ source "$(dirname "${BASH_SOURCE[0]}")/functions.sh"
 mount_filesystems
 
 # To ensure apt doesn't hang waiting for input
-echo 'APT::Get::Assume-Yes "true";' > /etc/apt/apt.conf.d/90assumeyes
-echo 'APT::Install-Recommends "false";' > /etc/apt/apt.conf.d/90recommends
-echo 'APT::Install-Suggests "false";' > /etc/apt/apt.conf.d/90suggests
-echo 'Dpkg::Options {"--force-confnew";}' > /etc/apt/apt.conf.d/90dpkgoptions
+#echo 'APT::Get::Assume-Yes "true";' > /etc/apt/apt.conf.d/90assumeyes
+#echo 'APT::Install-Recommends "false";' > /etc/apt/apt.conf.d/90recommends
+#echo 'APT::Install-Suggests "false";' > /etc/apt/apt.conf.d/90suggests
+#echo 'Dpkg::Options {"--force-confnew";}' > /etc/apt/apt.conf.d/90dpkgoptions
 
 # Update and install packages
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -y
-apt-get install -y --no-install-recommends \
-    linux-image-amd64 \
-    systemd-sysv \
-    zstd
+#export DEBIAN_FRONTEND=noninteractive
+#apt-get update -y
+#apt-get install -y --no-install-recommends \
+#    linux-image-amd64 \
+#    systemd-sysv
 
 # Configure locale
 #locale-gen

@@ -11,31 +11,64 @@ source "$(dirname "${BASH_SOURCE[0]}")/functions.sh"
 # Mount filesystems
 mount_filesystems
 
-export DEBIAN_FRONTEND=noninteractive
-
-# Install packages specific to the target environment
-apt-get update -y
-apt-get install -y --no-install-recommends \
-    grub-common \
-    grub2-common \
-    ucf
-
-# Get grub packages from the live installer environment
-mkdir -p /grub-debs
-pushd /grub-debs
-apt-get download \
-    grub-pc \
-    grub-pc-bin \
-    grub-efi-amd64 \
-    grub-efi-amd64-bin \
-    efibootmgr
-popd
-
 # Set default root password
 echo "root:whistlekube" | chpasswd
 
-# Cleanup apt cache
-cleanup_apt
+export DEBIAN_FRONTEND=noninteractive
+
+# Install busybox
+apt-get update
+apt-get install --no-install-recommends busybox-static
+
+cd /bin
+for cmd in sh ls cp mv ln mkdir rmdir rm cat echo dmesg mount umount ping ip; do
+  ln -sf busybox $cmd
+done
+cd /
+
+# Purge unnecessary packages
+#apt-get purge --allow-remove-essential --auto-remove -y \
+#  bsdutils  \
+#  debian-archive-keyring  \
+#  debianutils  \
+#  debootstrap  \
+#  diffutils  \
+#  distro-info  \
+#  distro-info-data  \
+#  findutils  \
+#  gcc-14-base  \
+#  grep  \
+#  gzip  \
+#  hostname  \
+#  perl-base
+
+
+##  bash       \
+##  findutils*  \
+##  grep*       \
+##  sed*        \
+##  sysvinit-utils\
+##  udev
+
+# Purge unnecessary packages
+#apt-get purge --allow-remove-essential --auto-remove -y \
+#  bash*       \
+#  coreutils*  \
+#  sed*        \
+#  grep*       \
+#  findutils*  \
+#  sysvinit-utils\
+#  util-linux  \
+#  udev
+
+# Clean apt caches to reduce image size
+#echo "Cleaning apt caches..."
+#rm -rf /var/lib/apt/lists/* /var/log/* /tmp/*
+
+# Remove apt and dpkg
+#apt-get purge --auto-remove -y \
+#  apt* \
+#  dpkg*
 
 # Unmount filesystems
 unmount_filesystems

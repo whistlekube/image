@@ -24,16 +24,14 @@ ENV DEBCONF_NONINTERACTIVE_SEEN=true
 
 # === Base chroot build ===
 # This stage builds the base chroot environment that is used for both the target and live root filesystems
-FROM base-builder AS chroot-builder
+FROM base-builder AS debootstrap-builder
 
 ENV ROOTFS_DIR="/rootfs"
 ENV CHROOT_BOOTSTRAP_DIR="/whistlekube-bootstrap"
 
 # Install required packages for the build process
 # Then run debootstrap to create the minimal Debian system
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    --security=insecure \
+RUN --security=insecure \
     apt-get update && \
     apt-get install -y --no-install-recommends \
         debootstrap \
@@ -50,6 +48,44 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
                 "${DEBIAN_MIRROR}" && \
     echo "=== Debootstrap DONE ==="
 
+# === Base rootfs builder with tools installed ===
+# This stage builds the base chroot environment that is used for both the target and live root filesystems
+FROM base-builder AS rootfs-builder
+
+# Install required packages for the build process
+# Then run debootstrap to create the minimal Debian system
+COPY /debstrap/target-hooks/ /hooks/
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        mmdebstrap \
+        ca-certificates \
+        squashfs-tools && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# === Target rootfs build ===
+# This stage builds the target root filesystem
+FROM rootfs-builder AS targetfs-build
+
+ENV INCLUDE_PKGS="dpkg,busybox-static,libc-bin,base-files,base-passwd,debianutils"
+RUN --security=insecure \
+    echo "=== Mmdebstrap base rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
+    mkdir -p /rootfs && \
+    mmdebstrap --variant=custom \
+        --include="${INCLUDE_PKGS}" \
+        --dpkgopt="path-exclude=/usr/share/man/*" \
+        --dpkgopt="path-exclude=/usr/share/doc/*" \
+        --dpkgopt="path-exclude=/usr/share/locale/*" \
+        --dpkgopt="path-include=/usr/share/doc/*/copyright" \
+        --hook-dir=/usr/share/mmdebstrap/hooks/busybox \
+        "${DEBIAN_RELEASE}" \
+        /rootfs \
+        "${DEBIAN_MIRROR}" && \
+    echo "=== Mmdebstrap DONE ==="
+
+# === Base chroot build ===
+FROM debootstrap-builder AS chroot-builder
+
 # Copy the base overlay and run base bootstrap script
 COPY /overlays/base/ "${ROOTFS_DIR}/"
 RUN --mount=type=cache,target=${ROOTFS_DIR}/var/cache/apt,sharing=locked \
@@ -58,6 +94,36 @@ RUN --mount=type=cache,target=${ROOTFS_DIR}/var/cache/apt,sharing=locked \
     echo "=== Configuring base chroot for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
     chroot "${ROOTFS_DIR}" "${CHROOT_BOOTSTRAP_DIR}/bootstrap-base.sh" && \
     echo "=== Chroot configured for base ==="
+
+# === Target chroot build ===
+# This stage builds the target chroot environment that is used for the target filesystem
+# Outputs filesystem.squashfs binary
+##FROM debootstrap-builder AS targetfs-build
+##COPY /scripts/target-chroot.sh "${ROOTFS_DIR}/"
+##RUN --security=insecure \
+##    echo "=== Configuring target chroot for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
+##    mkdir -p "${ROOTFS_DIR}/proc" && \
+##    mount -t proc proc "${ROOTFS_DIR}/proc" && \
+##    mkdir -p "${ROOTFS_DIR}/sys" && \
+##    mount -t sysfs sysfs "${ROOTFS_DIR}/sys" && \
+##    mkdir -p "${ROOTFS_DIR}/dev" && \
+##    mount --bind /dev "${ROOTFS_DIR}/dev" && \
+##    mkdir -p "${ROOTFS_DIR}/dev/pts" && \
+##    mount --bind /dev/pts "${ROOTFS_DIR}/dev/pts" && \
+##    mkdir -p "${ROOTFS_DIR}/dev/shm" && \
+##    mount -t tmpfs shm "${ROOTFS_DIR}/dev/shm" && \
+##    echo "=== Running target chroot script ===" && \
+##    chroot "${ROOTFS_DIR}" "/target-chroot.sh" && \
+##    echo "=== Cleaning up target chroot ===" && \
+##    umount -l "${ROOTFS_DIR}/dev/shm" && \
+##    umount -l "${ROOTFS_DIR}/dev/pts" && \
+##    umount -l "${ROOTFS_DIR}/dev" && \
+##    umount -l "${ROOTFS_DIR}/sys" && \
+##    umount -l "${ROOTFS_DIR}/proc" && \
+##    echo "=== Squashing target filesystem ===" && \
+##    mkdir -p "${OUTPUT_DIR}" && \
+##    mksquashfs "${ROOTFS_DIR}" "${OUTPUT_DIR}/filesystem.squashfs" -comp xz -no-xattrs -no-fragments -wildcards -b 1M && \
+##    echo "=== Chroot configured for target ==="
 
 # === Live chroot build ===
 # This stage builds the live chroot environment that is used for the live installer
@@ -79,24 +145,8 @@ RUN --mount=type=cache,target=${ROOTFS_DIR}/var/cache/apt,sharing=locked \
     chroot "${ROOTFS_DIR}" "${CHROOT_BOOTSTRAP_DIR}/cleanup-live.sh" && \
     rm -rf "${ROOTFS_DIR}${CHROOT_BOOTSTRAP_DIR}" && \
     echo "=== Squashing live filesystem ===" && \
-    mksquashfs "${ROOTFS_DIR}" "${OUTPUT_DIR}/filesystem.squashfs" -comp xz -Xbcj x86_64 -no-xattrs -no-fragments -wildcards -b 1M && \
+    mksquashfs "${ROOTFS_DIR}" "${OUTPUT_DIR}/filesystem.squashfs" -comp xz -no-xattrs -no-fragments -wildcards -b 1M && \
     echo "=== Chroot configured for live ==="
-
-# === Target chroot build ===
-# This stage builds the target chroot environment that is used for the target filesystem
-# Outputs filesystem.squashfs binary
-FROM chroot-builder AS targetfs-build
-COPY /overlays/target/ "${ROOTFS_DIR}/"
-RUN --mount=type=cache,target=${ROOTFS_DIR}/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=${ROOTFS_DIR}/var/lib/apt,sharing=locked \
-    --security=insecure \
-    echo "=== Configuring target chroot for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
-    chroot "${ROOTFS_DIR}" "${CHROOT_BOOTSTRAP_DIR}/bootstrap-target.sh" && \
-    echo "=== Squashing target filesystem ===" && \
-    mkdir -p "${OUTPUT_DIR}" && \
-    mksquashfs "${ROOTFS_DIR}" "${OUTPUT_DIR}/filesystem.squashfs" -comp xz -Xbcj x86_64 -no-xattrs -no-fragments -wildcards -b 1M && \
-    cp -a ${ROOTFS_DIR}/grub-debs "${OUTPUT_DIR}/" && \
-    echo "=== Chroot configured for target ==="
 
 # Setup the apt repository directory
 ##RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
