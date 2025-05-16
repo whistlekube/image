@@ -2,14 +2,14 @@
 set -eauox pipefail
 
 # Build variables
+OUTPUT_DIR=${OUTPUT_DIR:-$(pwd)/output}
+ISO_DIR="${ISO_DIR:-$(pwd)/iso}"
 ISO_LABEL=${ISO_LABEL:-"WHISTLEKUBE_ISO"}
 ISO_APPID=${ISO_APPID:-"Whistlekube Installer"}
 ISO_PUBLISHER=${ISO_PUBLISHER:-"Whistlekube"}
 ISO_PREPARER=${ISO_PREPARER:-"Built with xorriso"}
-ISO_OUTPUT_PATH="${ISO_OUTPUT_PATH:-/whistlekube-installer.iso}"
-
-# Directories
-ISO_DIR="${ISO_DIR:-$(pwd)/iso}"
+ISO_FILENAME=${ISO_FILENAME:-"whistlekube-installer.iso"}
+ISO_OUTPUT_PATH="${OUTPUT_DIR}/${ISO_FILENAME}"
 EFI_MOUNT_POINT="${EFI_MOUNT_POINT:-/efimount}"
 HYBRID_MBR_PATH="${HYBRID_MBR_PATH:-/usr/lib/grub/i386-pc/boot_hybrid.img}"
 
@@ -52,6 +52,7 @@ build_grub_uefi() {
 # This is a hybrid ISO that can be booted from BIOS or UEFI and installed on a CD or USB drive
 build_iso() {
   echo "Creating bootable ISO..."
+  mkdir -p "${OUTPUT_DIR}"
   xorriso \
     -as mkisofs \
     -iso-level 3 \

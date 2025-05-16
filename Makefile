@@ -1,8 +1,8 @@
 
-.PHONY: all build clean docker-build docker-build-debootstrap docker-buildx-enable shell iso help
+.PHONY: all build clean docker-build docker-buildx-enable shell help
 
 # The date of the build
-BUILD_DATE := $(shell date +%Y%m%d)
+BUILD_DATE := $(shell date -u +%Y%m%d)
 # The git commit hash of the build
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "local")
 
@@ -14,35 +14,34 @@ BUILD_VERSION ?= dev-${BUILD_DATE}-${GIT_COMMIT}
 # The name of the Docker image to build
 IMAGE_NAME ?= whistlekube-installer
 # The output directory for the build
-OUTPUT_DIR ?= $(shell pwd)/build
+OUTPUT_DIR ?= $(shell pwd)/output
 # The filename of the ISO to build
 ISO_FILENAME ?= whistlekube-${DEBIAN_RELEASE}-${BUILD_VERSION}.iso
 # The docker target to build
-BUILD_TARGET ?= artifact
+BUILD_TARGET ?= iso-builder
 # Custom build flags to pass to docker buildx
 BUILD_FLAGS ?= ""
 # Debian mirror to use for the build
 DEBIAN_MIRROR ?= http://deb.debian.org/debian
 
 # Default target
-all: help
+all: build
 
 # Help message
 help:
 	@echo "Whistlekube Installer ISO Builder"
 	@echo "-------------------------"
 	@echo "Targets:"
-	@echo "  build                             - Build the minimal whistlekube installer ISO in Docker"
-	@echo "  docker-build BUILD_TARGET=builder - Build the Docker image for the given target"
-	@echo "  clean                             - Remove output files and temporary data"
-	@echo "  shell                             - Start an interactive shell in the Docker container"
-	@echo "  help                              - Show this help message"
+	@echo "  build  - Build the minimal whistlekube installer ISO in Docker"
+	@echo "  clean  - Remove output files and temporary data"
+	@echo "  shell  - Start an interactive shell in the Docker container"
+	@echo "  help   - Show this help message"
 
-# Build the full ISO via Docker
-build: docker-build
-	@mkdir -p $(OUTPUT_DIR)
+# Build a docker target (default is artifact, which builds the full ISO)
+build:
+	@echo
 	@echo "================================================"
-	@echo "Building Installer ISO..."
+	@echo "Building $(BUILD_TARGET) target..."
 	@echo "================================================"
 	@echo "Debian release: $(DEBIAN_RELEASE)"
 	@echo "Git commit: $(GIT_COMMIT)"
@@ -51,10 +50,13 @@ build: docker-build
 	@echo "Output directory: $(OUTPUT_DIR)"
 	@echo "Docker image name: $(IMAGE_NAME)"
 	@echo "================================================"
-	@docker buildx build \
+	@echo
+
+	@mkdir -p $(OUTPUT_DIR)
+	docker buildx build \
 	    --allow security.insecure \
 		--target $(BUILD_TARGET) \
-		--output type=local,dest=$(OUTPUT_DIR) \
+		--output type=local,src=/output,dest=$(OUTPUT_DIR) \
 		--progress=plain \
 		--build-arg DEBIAN_RELEASE=$(DEBIAN_RELEASE) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
@@ -62,6 +64,10 @@ build: docker-build
 		-t $(IMAGE_NAME) \
 		.
 	@echo "ISO has been created at $(OUTPUT_DIR)/$(ISO_FILENAME)"
+
+# Build just the live chroot
+build-live:
+	@$(MAKE) build BUILD_TARGET=live-builder $(MAKEFLAGS)
 
 # Build Docker image with a configurable target
 docker-build:
