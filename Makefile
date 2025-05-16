@@ -1,4 +1,4 @@
-.PHONY: all build clean chroot targetfs livefs docker-buildx-enable shell shell-chroot help
+.PHONY: all build clean chroot targetfs livefs iso docker-buildx-enable shell shell-chroot shell-targetfs shell-livefs shell-iso help
 
 # === Environment ===
 # The date of the build
@@ -8,7 +8,7 @@ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "UNKNO
 # The git commit hash of the build
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "UNKNOWNCOMMIT")
 # The main artifact build target
-ARTIFACT_BUILD_TARGET ?= artifact
+ARTIFACT_BUILD_TARGET := artifact
 
 # === Configuration ===
 # The Debian release to base the ISO on

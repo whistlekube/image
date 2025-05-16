@@ -79,7 +79,7 @@ RUN --mount=type=cache,target=${ROOTFS_DIR}/var/cache/apt,sharing=locked \
     chroot "${ROOTFS_DIR}" "${CHROOT_BOOTSTRAP_DIR}/cleanup-live.sh" && \
     rm -rf "${ROOTFS_DIR}${CHROOT_BOOTSTRAP_DIR}" && \
     echo "=== Squashing live filesystem ===" && \
-    mksquashfs "${ROOTFS_DIR}" "${OUTPUT_DIR}/filesystem.squashfs" -comp xz -no-xattrs -no-fragments -wildcards -b 1M -e boot && \
+    mksquashfs "${ROOTFS_DIR}" "${OUTPUT_DIR}/filesystem.squashfs" -comp xz -Xbcj x86_64 -no-xattrs -no-fragments -wildcards -b 1M && \
     echo "=== Chroot configured for live ==="
 
 # === Target chroot build ===
@@ -94,7 +94,7 @@ RUN --mount=type=cache,target=${ROOTFS_DIR}/var/cache/apt,sharing=locked \
     chroot "${ROOTFS_DIR}" "${CHROOT_BOOTSTRAP_DIR}/bootstrap-target.sh" && \
     echo "=== Squashing target filesystem ===" && \
     mkdir -p "${OUTPUT_DIR}" && \
-    mksquashfs "${ROOTFS_DIR}" "${OUTPUT_DIR}/filesystem.squashfs" -comp xz -no-xattrs -no-fragments -wildcards -b 1M && \
+    mksquashfs "${ROOTFS_DIR}" "${OUTPUT_DIR}/filesystem.squashfs" -comp xz -Xbcj x86_64 -no-xattrs -no-fragments -wildcards -b 1M && \
     cp -a ${ROOTFS_DIR}/grub-debs "${OUTPUT_DIR}/" && \
     echo "=== Chroot configured for target ==="
 

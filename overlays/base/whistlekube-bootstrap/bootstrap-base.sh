@@ -22,12 +22,11 @@ apt-get update -y
 apt-get install -y --no-install-recommends \
     linux-image-amd64 \
     systemd-sysv \
-    locales \
     zstd
 
 # Configure locale
-locale-gen
-update-locale LANG=en_US.UTF-8
+#locale-gen
+#update-locale LANG=en_US.UTF-8
 
 # Unmount filesystems
 unmount_filesystems
