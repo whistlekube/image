@@ -19,6 +19,7 @@ mmdebstrap \
   --variant=${MMDEBSTRAP_VARIANT} \
   --include="$MMDEBSTRAP_INCLUDE" \
   --hook-dir=${HOOK_DIR} \
+  --components="main contrib non-free non-free-firmware" \
   --aptopt='APT::Install-Recommends "false"' \
   --aptopt='APT::Install-Suggests "false"' \
   --aptopt='Acquire::Languages { "environment"; "en"; }' \

@@ -56,6 +56,7 @@ FROM base-builder AS rootfs-builder
 COPY /debstrap/target-hooks/ /hooks/
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt/lists <<EOFDOCKER
+set -eux
 apt-get update
 apt-get install -y --no-install-recommends \
     mmdebstrap \
@@ -116,18 +117,43 @@ EOFDOCKER
 FROM rootfs-builder AS targetfs-build
 
 WORKDIR /build
+ENV ROOTFS_DIR="/rootfs"
 ENV MMDEBSTRAP_VARIANT="apt"
-ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,squashfs-tools"
+ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
 COPY /debstrap/target-hooks/ /hooks/
-COPY /debstrap/target-overlay/ /overlay/
+COPY /debstrap/dracut.conf /etc/dracut.conf.d/01-whistlekube.conf
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 
 RUN --security=insecure <<EOFDOCKER
 echo "=== Building TARGET rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ==="
 /scripts/build-rootfs.sh
-
-KVER=$(ls -1 $rootdir/lib/modules | sort -V | tail -n1)
 EOFDOCKER
+
+# === Target rootfs build ===
+# This stage builds the target root filesystem
+FROM targetfs-build AS initramfs-build
+
+WORKDIR /build
+ENV ROOTFS_DIR="/rootfs"
+ENV MODULE_DIR="${ROOTFS_DIR}/usr/lib/modules/${KVER}/kernel/drivers/firmware"
+ENV FIRMWARE_DIR="${ROOTFS_DIR}/usr/lib/modules/${KVER}/kernel/drivers/firmware"
+COPY /debstrap/dracut.conf /etc/dracut.conf.d/01-whistlekube.conf
+
+RUN --security=insecure <<EOFDOCKER
+set -eux
+
+echo "=== Building TARGET initramfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ==="
+KVER=$(ls -1 $ROOTFS_DIR/usr/lib/modules | sort -V | tail -n1)
+dracut \
+    --kver ${KVER} \
+    --kmoddir ${ROOTFS_DIR}/usr/lib/modules/${KVER} \
+    --no-hostonly \
+    --force \
+    /initramfs.img
+EOFDOCKER
+
+FROM scratch AS initramfs-artifact
+COPY --from=initramfs-build /initramfs.img /initramfs.img
 
 
 #ENV MMDEBSTRAP_INCLUDE="dpkg,busybox,systemd-boot,linux-image-amd64,grub-efi-amd64,grub-efi-amd64-signed,efibootmgr,squashfs-tools"
@@ -165,19 +191,19 @@ EOFDOCKER
 
 # === Build initramfs and kernel ===
 # This stage builds the target root filesystem
-FROM rootfs-builder AS boot-build
-ARG MMDEBSTRAP_VARIANT="minbase"
-ARG MMDEBSTRAP_INCLUDE="initramfs-tools"
-RUN --security=insecure <<EOFDOCKER
-    echo "=== Mmdebstrap boot builder for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ==="
-    mmdebstrap --variant=${MMDEBSTRAP_VARIANT} \
-        --include=${MMDEBSTRAP_INCLUDE} \
-        ${MMDEBSTRAP_NODOCS} \
-        ${DEBIAN_RELEASE} \
-        /rootfs \
-        ${DEBIAN_MIRROR}
-    echo "=== Mmdebstrap DONE ==="
-EOFDOCKER
+## FROM rootfs-builder AS boot-build
+## ARG MMDEBSTRAP_VARIANT="minbase"
+## ARG MMDEBSTRAP_INCLUDE="initramfs-tools"
+## RUN --security=insecure <<EOFDOCKER
+##     echo "=== Mmdebstrap boot builder for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ==="
+##     mmdebstrap --variant=${MMDEBSTRAP_VARIANT} \
+##         --include=${MMDEBSTRAP_INCLUDE} \
+##         ${MMDEBSTRAP_NODOCS} \
+##         ${DEBIAN_RELEASE} \
+##         /rootfs \
+##         ${DEBIAN_MIRROR}
+##     echo "=== Mmdebstrap DONE ==="
+## EOFDOCKER
 
 # === Base chroot build ===
 #FROM debootstrap-builder AS chroot-builder
