@@ -69,29 +69,43 @@ RUN --mount=type=cache,target=/var/cache/apt \
 #--customize-hook='mkdir -p "$1/run" "$1/proc" "$1/sys" "$1/dev"' \
 #--hook-dir=/usr/share/mmdebstrap/hooks/busybox \
 
+ENV MMDEBSTRAP_APTOPTS="\
+    --aptopt='Acquire::Languages { "environment"; "en"; }' \
+    --aptopt='Acquire::Languages "none"'"
 ENV MMDEBSTRAP_NODOCS="\
     --dpkgopt=path-exclude=/usr/share/man/* \
-    --dpkgopt=path-exclude=/usr/share/doc/* \
     --dpkgopt=path-exclude=/usr/share/locale/* \
+    --dpkgopt=path-include=/usr/share/locale/locale.alias \
+    --dpkgopt=path-exclude=/usr/share/doc/* \
     --dpkgopt=path-include=/usr/share/doc/*/copyright"
 
 # === Target rootfs build ===
 # This stage builds the target root filesystem
 FROM rootfs-builder AS targetfs-build
-ARG MMDEBSTRAP_VARIANT="custom"
+ARG MMDEBSTRAP_VARIANT="apt"
 #ENV MMDEBSTRAP_INCLUDE="dpkg,busybox,systemd-boot,linux-image-amd64,grub-efi-amd64,grub-efi-amd64-signed,efibootmgr,squashfs-tools"
 #ENV MMDEBSTRAP_INCLUDE="systemd-boot,linux-image-amd64,grub-efi-amd64,grub-efi-amd64-signed,efibootmgr,squashfs-tools"
-ARG MMDEBSTRAP_INCLUDE="dpkg,busybox,libc-bin,base-files,base-passwd"
+#ARG MMDEBSTRAP_INCLUDE="dpkg,busybox,libc-bin,libc6,base-files,base-passwd,systemd-boot"
+#ARG MMDEBSTRAP_INCLUDE="systemd-boot,linux-image-amd64,grub-efi-amd64,grub-efi-amd64-signed,efibootmgr,squashfs-tools"
+ARG MMDEBSTRAP_INCLUDE="systemd-boot,linux-image-amd64,grub-efi-amd64,grub-efi-amd64-signed"
 RUN --security=insecure \
     echo "=== Mmdebstrap base rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
     mmdebstrap --variant=${MMDEBSTRAP_VARIANT} \
+        --components=main,contrib,non-free,non-free-firmware \
         --include=${MMDEBSTRAP_INCLUDE} \
-        ${MMDEBSTRAP_NODOCS} \
-        --hook-dir=/usr/share/mmdebstrap/hooks/busybox \
+        --dpkgopt=path-exclude=/usr/share/man/* \
+        --dpkgopt=path-exclude=/usr/share/locale/* \
+        --dpkgopt=path-include=/usr/share/locale/locale.alias \
+        --dpkgopt=path-exclude=/usr/share/doc/* \
+        --dpkgopt=path-include=/usr/share/doc/*/copyright \
+        --hook-dir=/hooks \
         ${DEBIAN_RELEASE} \
         /rootfs \
         ${DEBIAN_MIRROR} && \
     echo "=== Mmdebstrap DONE ==="
+
+#--hook-dir=/usr/share/mmdebstrap/hooks/busybox \
+
 
 # === Build initramfs and kernel ===
 # This stage builds the target root filesystem
@@ -101,6 +115,7 @@ ARG MMDEBSTRAP_INCLUDE="initramfs-tools"
 RUN --security=insecure \
     echo "=== Mmdebstrap boot builder for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
     mmdebstrap --variant=${MMDEBSTRAP_VARIANT} \
+        --include=${MMDEBSTRAP_INCLUDE} \
         ${MMDEBSTRAP_NODOCS} \
         ${DEBIAN_RELEASE} \
         /rootfs \
