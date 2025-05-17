@@ -55,54 +55,110 @@ FROM base-builder AS rootfs-builder
 # Then run debootstrap to create the minimal Debian system
 COPY /debstrap/target-hooks/ /hooks/
 RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt/lists \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-        mmdebstrap \
-        ca-certificates \
-        squashfs-tools && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    --mount=type=cache,target=/var/lib/apt/lists <<EOFDOCKER
+apt-get update
+apt-get install -y --no-install-recommends \
+    mmdebstrap \
+    systemd-boot \
+    systemd-ukify \
+    xz-utils \
+    dosfstools \
+    parted \
+    ca-certificates \
+    squashfs-tools \
+    syslinux-common \
+    syslinux-efi \
+    dracut \
+    dracut-live \
+    dracut-config-generic \
+    binutils \
+    rsync \
+    gnupg \
+    efitools
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+EOFDOCKER
 
 #--customize-hook='echo "root:x:0:0:root:/root:/bin/sh" > "$1/etc/passwd"' \
 #--customize-hook='echo "root:x:0:" > "$1/etc/group"' \
 #--customize-hook='mkdir -p "$1/run" "$1/proc" "$1/sys" "$1/dev"' \
 #--hook-dir=/usr/share/mmdebstrap/hooks/busybox \
 
-ENV MMDEBSTRAP_APTOPTS="\
-    --aptopt='Acquire::Languages { "environment"; "en"; }' \
-    --aptopt='Acquire::Languages "none"'"
-ENV MMDEBSTRAP_NODOCS="\
-    --dpkgopt=path-exclude=/usr/share/man/* \
-    --dpkgopt=path-exclude=/usr/share/locale/* \
-    --dpkgopt=path-include=/usr/share/locale/locale.alias \
-    --dpkgopt=path-exclude=/usr/share/doc/* \
-    --dpkgopt=path-include=/usr/share/doc/*/copyright"
+## # Environment variables for ukify
+## ENV UKIFY_EFI_CMDLINE="\
+##     boot=live \
+##     root=LABEL=WHISTLEKUBE_ISO \
+##     components \
+##     splash \
+##     nomodeset \
+##     autologin \
+##     username=root \
+##     hostname=whistlekube-installer \
+##     locales=en_US.UTF-8 \
+##     keyboard-layouts=us"
+## 
+## # === Target boot environment build ===
+## # This stage builds the target boot environment (initramfs, kernel, uki)
+## FROM rootfs-builder AS targetboot-build
+## WORKDIR /build
+## ENV MMDEBSTRAP_VARIANT="apt"
+## ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,squashfs-tools,dracut,dracut-live,dracut-config-generic"
+## COPY /debstrap/targetboot-hooks/ /hooks/
+## COPY /debstrap/targetboot-preoverlay/ /preoverlay/
+## COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
+## RUN --security=insecure <<EOFDOCKER
+##     echo "=== Building TARGET boot environment for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ==="
+##     /scripts/build-rootfs.sh
+## EOFDOCKER
 
 # === Target rootfs build ===
 # This stage builds the target root filesystem
 FROM rootfs-builder AS targetfs-build
-ARG MMDEBSTRAP_VARIANT="apt"
+
+WORKDIR /build
+ENV MMDEBSTRAP_VARIANT="apt"
+ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,squashfs-tools"
+COPY /debstrap/target-hooks/ /hooks/
+COPY /debstrap/target-overlay/ /overlay/
+COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
+
+RUN --security=insecure <<EOFDOCKER
+echo "=== Building TARGET rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ==="
+/scripts/build-rootfs.sh
+
+KVER=$(ls -1 $rootdir/lib/modules | sort -V | tail -n1)
+EOFDOCKER
+
+
 #ENV MMDEBSTRAP_INCLUDE="dpkg,busybox,systemd-boot,linux-image-amd64,grub-efi-amd64,grub-efi-amd64-signed,efibootmgr,squashfs-tools"
 #ENV MMDEBSTRAP_INCLUDE="systemd-boot,linux-image-amd64,grub-efi-amd64,grub-efi-amd64-signed,efibootmgr,squashfs-tools"
 #ARG MMDEBSTRAP_INCLUDE="dpkg,busybox,libc-bin,libc6,base-files,base-passwd,systemd-boot"
 #ARG MMDEBSTRAP_INCLUDE="systemd-boot,linux-image-amd64,grub-efi-amd64,grub-efi-amd64-signed,efibootmgr,squashfs-tools"
-ARG MMDEBSTRAP_INCLUDE="systemd-boot,linux-image-amd64,grub-efi-amd64,grub-efi-amd64-signed"
-RUN --security=insecure \
-    echo "=== Mmdebstrap base rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
-    mmdebstrap --variant=${MMDEBSTRAP_VARIANT} \
-        --components=main,contrib,non-free,non-free-firmware \
-        --include=${MMDEBSTRAP_INCLUDE} \
-        --dpkgopt=path-exclude=/usr/share/man/* \
-        --dpkgopt=path-exclude=/usr/share/locale/* \
-        --dpkgopt=path-include=/usr/share/locale/locale.alias \
-        --dpkgopt=path-exclude=/usr/share/doc/* \
-        --dpkgopt=path-include=/usr/share/doc/*/copyright \
-        --hook-dir=/hooks \
-        ${DEBIAN_RELEASE} \
-        /rootfs \
-        ${DEBIAN_MIRROR} && \
-    echo "=== Mmdebstrap DONE ==="
+#ARG MMDEBSTRAP_INCLUDE="systemd-boot,linux-image-amd64"
+#RUN --security=insecure \
+#    echo "=== Mmdebstrap TARGET rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
+#    mmdebstrap --variant=${MMDEBSTRAP_VARIANT} \
+#        --components=main,contrib,non-free,non-free-firmware \
+#        --include=${MMDEBSTRAP_INCLUDE} \
+#        --dpkgopt=path-exclude=/usr/share/man/* \
+#        --dpkgopt=path-exclude=/usr/share/locale/* \
+#        --dpkgopt=path-include=/usr/share/locale/locale.alias \
+#        --dpkgopt=path-exclude=/usr/share/doc/* \
+#        --dpkgopt=path-include=/usr/share/doc/*/copyright \
+#        --hook-dir=/hooks \
+#        ${DEBIAN_RELEASE} \
+#        /rootfs \
+#        ${DEBIAN_MIRROR} && \
+#    echo "=== Building Unified Kernel Image ===" && \
+#    mkdir -p /rootfs/boot/EFI/Linux && \
+#    ukify build \
+#        --linux=/rootfs/vmlinuz \
+#        --initrd=/rootfs/initrd.img \
+#        --cmdline="${UKIFY_EFI_CMDLINE}" \
+#        --output=/rootfs/boot/EFI/Linux/whistlekube-a.efi && \
+#    echo "=== Squashing target filesystem ===" && \
+#    mksquashfs /rootfs "/filesystem.squashfs" -comp xz -no-xattrs -no-fragments -wildcards -b 1M && \
+#    echo "=== Chroot configured for target ==="
 
 #--hook-dir=/usr/share/mmdebstrap/hooks/busybox \
 
@@ -112,15 +168,16 @@ RUN --security=insecure \
 FROM rootfs-builder AS boot-build
 ARG MMDEBSTRAP_VARIANT="minbase"
 ARG MMDEBSTRAP_INCLUDE="initramfs-tools"
-RUN --security=insecure \
-    echo "=== Mmdebstrap boot builder for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
+RUN --security=insecure <<EOFDOCKER
+    echo "=== Mmdebstrap boot builder for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ==="
     mmdebstrap --variant=${MMDEBSTRAP_VARIANT} \
         --include=${MMDEBSTRAP_INCLUDE} \
         ${MMDEBSTRAP_NODOCS} \
         ${DEBIAN_RELEASE} \
         /rootfs \
-        ${DEBIAN_MIRROR} && \
+        ${DEBIAN_MIRROR}
     echo "=== Mmdebstrap DONE ==="
+EOFDOCKER
 
 # === Base chroot build ===
 #FROM debootstrap-builder AS chroot-builder

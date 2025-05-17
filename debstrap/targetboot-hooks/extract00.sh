@@ -4,10 +4,8 @@ set -eux
 
 rootdir="$1"
 
-rm -f "$rootdir/etc/resolv.conf"
-rm -f "$rootdir/etc/hostname"
-
-#echo "root:whistlekube" | chroot "$rootdir" chpasswd
+# Rsync the overlay files to the target rootfs
+rsync -a /overlay/ "$rootdir/"
 
 # Install busybox to the target rootfs
 #chroot "$rootdir" /bin/busybox --install -s

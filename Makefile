@@ -89,7 +89,7 @@ build:
 
 	@mkdir -p $(OUTPUT_DIR)
 	docker buildx build $(BUILD_FLAGS) -t $(DOCKER_IMAGE_NAME) .
-	@echo "ISO has been created at $(OUTPUT_DIR)/$(ISO_FILENAME)"
+	@echo "Make build ${BUILD_TARGET} completed successfully"
 
 # Build just the base chroot
 chroot:
