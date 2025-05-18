@@ -16,6 +16,7 @@ HOOK_DIR=${HOOK_DIR:-/hooks}
 # Create minimal Debian rootfs with mmdebstrap
 echo "Creating rootfs with mmdebstrap..."
 mmdebstrap \
+  --verbose \
   --variant=${MMDEBSTRAP_VARIANT} \
   --include="$MMDEBSTRAP_INCLUDE" \
   --hook-dir=${HOOK_DIR} \
@@ -38,6 +39,8 @@ mmdebstrap \
   "$DEBIAN_RELEASE" \
   $ROOTFS_DIR \
   "https://deb.debian.org/debian"
+
+
 
 ## # Make necessary modifications to rootfs for immutable design
 ## echo "Configuring rootfs for immutability..."

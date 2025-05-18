@@ -13,6 +13,7 @@ mkfs.vfat -F 32 /output/efi/EFI.img
 mkdir -p "$rootdir/boot/efi"
 mount /output/efi/EFI.img "$rootdir/boot/efi"
 
+
 ## Create essential files
 #mkdir -p "$rootdir/bin"
 #echo root:x:0:0:root:/root:/bin/sh > "$rootdir/etc/passwd"

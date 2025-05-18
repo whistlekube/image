@@ -22,32 +22,6 @@ ENV DEBIAN_ARCH="${TARGETARCH}"
 ENV DEBIAN_FRONTEND=noninteractive
 ENV DEBCONF_NONINTERACTIVE_SEEN=true
 
-# === Base chroot build ===
-# This stage builds the base chroot environment that is used for both the target and live root filesystems
-#FROM base-builder AS debootstrap-builder
-#
-#ENV ROOTFS_DIR="/rootfs"
-#ENV CHROOT_BOOTSTRAP_DIR="/whistlekube-bootstrap"
-#
-## Install required packages for the build process
-## Then run debootstrap to create the minimal Debian system
-#RUN --security=insecure \
-#    apt-get update && \
-#    apt-get install -y --no-install-recommends \
-#        debootstrap \
-#        ca-certificates \
-#        squashfs-tools && \
-#    apt-get clean && \
-#    rm -rf /var/lib/apt/lists/* && \
-#    echo "=== Debootstraping base rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
-#    mkdir -p ${ROOTFS_DIR} && \
-#    debootstrap --arch="${DEBIAN_ARCH}" \
-#                --variant=minbase \
-#                "${DEBIAN_RELEASE}" \
-#                ${ROOTFS_DIR} \
-#                "${DEBIAN_MIRROR}" && \
-#    echo "=== Debootstrap DONE ==="
-
 # === Base rootfs builder with tools installed ===
 # This stage builds the base chroot environment that is used for both the target and live root filesystems
 FROM base-builder AS rootfs-builder
@@ -66,15 +40,9 @@ apt-get install -y --no-install-recommends \
     parted \
     ca-certificates \
     squashfs-tools \
-    syslinux-common \
-    syslinux-efi \
-    dracut \
-    dracut-live \
-    dracut-config-generic \
     binutils \
     rsync \
-    gnupg \
-    efitools
+    gnupg
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 EOFDOCKER
@@ -111,6 +79,23 @@ EOFDOCKER
 ##     /scripts/build-rootfs.sh
 ## EOFDOCKER
 
+## # === Debstrap build ===
+## # This stage builds the target root filesystem
+## FROM rootfs-builder AS debstrap-build
+## 
+## WORKDIR /build
+## ENV ROOTFS_DIR="/rootfs"
+## ENV MMDEBSTRAP_VARIANT="apt"
+## #ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
+## ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,dracut,dracut-live,dracut-config-generic,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
+## COPY /debstrap/target-hooks/ /hooks/
+## COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
+## COPY /debstrap/dracut.conf .
+## 
+## RUN --security=insecure \
+##     echo "=== Building TARGET rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
+##     /scripts/build-rootfs.sh
+
 # === Target rootfs build ===
 # This stage builds the target root filesystem
 FROM rootfs-builder AS targetfs-build
@@ -118,9 +103,11 @@ FROM rootfs-builder AS targetfs-build
 WORKDIR /build
 ENV ROOTFS_DIR="/rootfs"
 ENV MMDEBSTRAP_VARIANT="apt"
-ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot-efi,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
+#ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
+ENV MMDEBSTRAP_INCLUDE="systemd-sysv,xz-utils,systemd-boot,live-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
 COPY /debstrap/target-hooks/ /hooks/
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
+COPY /debstrap/dracut.conf .
 
 RUN --security=insecure \
     echo "=== Building TARGET rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
@@ -128,6 +115,20 @@ RUN --security=insecure \
 
 RUN echo "=== Squashing target filesystem ===" && \
     mksquashfs /rootfs "/rootfs.squashfs" -comp xz -no-xattrs -no-fragments -wildcards -b 1M
+
+#FROM rootfs-builder AS targetboot-build
+#
+#ENV ROOTFS_DIR="/rootfs"
+#ENV MMDEBSTRAP_VARIANT="apt"
+#ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,live-boot,linux-image-amd64,xz-utils,firmware-linux-free,firmware-linux-nonfree"
+#COPY /debstrap/targetboot-hooks/ /hooks/
+#COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
+#COPY /debstrap/targetboot-overlay/ /overlay/
+#COPY /debstrap/dracut.conf /dracut.conf
+#RUN --security=insecure \
+#    echo "=== Building TARGET boot environment chroot for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
+#    /scripts/build-rootfs.sh
+
 
 ## # === Installer rootfs build ===
 ## FROM rootfs-builder AS installerfs-build
@@ -146,34 +147,35 @@ RUN echo "=== Squashing target filesystem ===" && \
 ## RUN echo "=== Squashing installer filesystem ===" && \
 ##     mksquashfs /rootfs "/rootfs.squashfs" -comp xz -no-xattrs -no-fragments -wildcards -b 1M
 
-# === EFI build ===
-# This stage builds the EFI file containing the kernel and initramfs
-FROM targetfs-build AS efi-build
-
-WORKDIR /work
-ENV ROOTFS_DIR="/rootfs"
-ENV MODULE_DIR="${ROOTFS_DIR}/usr/lib/modules/${KVER}/kernel/drivers/firmware"
-ENV FIRMWARE_DIR="${ROOTFS_DIR}/usr/lib/modules/${KVER}/kernel/drivers/firmware"
-COPY /debstrap/dracut.conf .
-
-RUN --security=insecure <<EOFDOCKER
-set -eux
-echo "=== Building TARGET initramfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ==="
-KVER=$(ls -1 $ROOTFS_DIR/usr/lib/modules | sort -V | tail -n1)
-ln -s ${ROOTFS_DIR}/boot/vmlinuz-${KVER} /boot/
-dracut \
-    --conf dracut.conf \
-    --kver ${KVER} \
-    --kmoddir ${ROOTFS_DIR}/usr/lib/modules/${KVER} \
-    --fwdir ${ROOTFS_DIR}/usr/lib/firmware \
-    --no-hostonly \
-    --uefi \
-    --force \
-    /linux.efi
-EOFDOCKER
-
-#FROM scratch AS initramfs-artifact
-#COPY --from=initramfs-build /initramfs.img /initramfs.img
+## # === EFI build ===
+## # This stage builds the EFI file containing the kernel and initramfs
+## FROM targetfs-build AS efi-build
+## 
+## WORKDIR /work
+## ENV ROOTFS_DIR="/rootfs"
+## ENV MODULE_DIR="${ROOTFS_DIR}/usr/lib/modules/${KVER}/kernel/drivers/firmware"
+## ENV FIRMWARE_DIR="${ROOTFS_DIR}/usr/lib/modules/${KVER}/kernel/drivers/firmware"
+## #COPY /debstrap/dracut.conf /dracut.conf
+## 
+## ## RUN --security=insecure <<EOFDOCKER
+## ## set -eux
+## ## echo "=== Building TARGET initramfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ==="
+## ## KVER=$(ls -1 $ROOTFS_DIR/usr/lib/modules | sort -V | tail -n1)
+## ## ln -s ${ROOTFS_DIR}/boot/vmlinuz-${KVER} /boot/
+## ## dracut \
+## ##     --conf dracut.conf \
+## ##     --kver ${KVER} \
+## ##     --kmoddir ${ROOTFS_DIR}/usr/lib/modules/${KVER} \
+## ##     --omit plymouth \
+## ##     --no-hostonly \
+## ##     --force \
+## ##     /initrd.img
+## ## EOFDOCKER
+## #    --fwdir ${ROOTFS_DIR}/usr/lib/firmware \
+## 
+## FROM scratch AS targetfs-artifact
+## COPY --from=targetfs-build /rootfs /rootfs
+## COPY --from=targetfs-build /rootfs.squashfs /rootfs.squashfs
 
 
 #ENV MMDEBSTRAP_INCLUDE="dpkg,busybox,systemd-boot,linux-image-amd64,grub-efi-amd64,grub-efi-amd64-signed,efibootmgr,squashfs-tools"
@@ -336,46 +338,43 @@ rm -rf /var/lib/apt/lists/*
 EOFDOCKER
 
 # Make the EFI patition image
-#COPY --from=targetfs-build /rootfs/vmlinuz ${EFI_DIR}/vmlinuz
-COPY --from=efi-build /linux.efi ${ISO_DIR}/linux.efi
+COPY --from=targetboot-build /rootfs/vmlinuz ${ISO_DIR}/vmlinuz
+COPY --from=targetboot-build /rootfs/initrd.img ${ISO_DIR}/initrd.img
+COPY --from=efi-build /initrd.img ${ISO_DIR}/initrd.img
 COPY --from=efi-build /usr/lib/systemd/boot/efi/systemd-bootx64.efi ${EFI_DIR}/EFI/BOOT/BOOTX64.EFI
 COPY --from=efi-build /usr/lib/systemd/boot/efi/systemd-bootx64.efi ${ISO_DIR}/EFI/BOOT/BOOTX64.EFI
-COPY /boot/loader/ ${EFI_DIR}/loader/
+COPY /boot/ ${EFI_DIR}/loader/
 RUN --security=insecure <<EOFDOCKER
     set -eux
     dd if=/dev/zero of="/efiboot.img" bs=1M count=10
-    mkfs.vfat -F 32 "/efiboot.img"
+    mkfs.vfat -F 32 /efiboot.img
     mkdir -p "${EFI_MOUNT_POINT}"
-    mount -o loop "/efiboot.img" "${EFI_MOUNT_POINT}"
+    mount -o loop /efiboot.img "${EFI_MOUNT_POINT}"
     cp -a "${EFI_DIR}"/* "${EFI_MOUNT_POINT}/"
-    ls -lah "${EFI_MOUNT_POINT}"/EFI/BOOT/
     umount "${EFI_MOUNT_POINT}"
 EOFDOCKER
 
 COPY --from=targetfs-build /rootfs.squashfs ${ISO_DIR}/live/filesystem.squashfs
-RUN mkdir -p ${ISO_DIR}/EFI && \
-    cp /efiboot.img ${ISO_DIR}/efiboot.img && \
-    mkdir -p ${OUTPUT_DIR} && \
+RUN mkdir -p ${OUTPUT_DIR} && \
     xorriso \
     -as mkisofs \
     -iso-level 3 \
     -rock --joliet --joliet-long \
-    -full-iso9660-filenames \
     -volid "${ISO_LABEL}" \
-    -appid "${ISO_APPID}" \
-    -publisher "${ISO_PUBLISHER}" \
-    -preparer "${ISO_PREPARER}" \
     -eltorito-alt-boot \
-        -e /efiboot.img \
-        -no-emul-boot \
-        -boot-load-size 4 \
-        -boot-info-table \
-    -append_partition 2 0xef /iso/efiboot.img \
-    -partition_cyl_align all \
+    -e /EFI/BOOT/BOOTX64.EFI \
+    -no-emul-boot \
+    -boot-load-size 4 \
+    -boot-info-table \
     -output ${OUTPUT_DIR}/${ISO_FILENAME} \
     ${ISO_DIR}
 
-#    -partition_offset 16 \
+#    -boot-catalog /boot.cat \
+#    -full-iso9660-filenames \
+#    -appid "${ISO_APPID}" \
+#    -publisher "${ISO_PUBLISHER}" \
+#    -preparer "${ISO_PREPARER}" \
+##    -partition_offset 16 \
 #    -append_partition 2 0xef "${ISO_DIR}/EFI/efiboot.img" \
 #    -graft-points \
 #        EFI=EFI \
