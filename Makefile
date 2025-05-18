@@ -38,11 +38,11 @@ BUILD_FLAGS := --allow security.insecure \
 
 # If this is the artifact build target, add the output directory flag
 # Otherwise, load the image into the local Docker daemon
-#ifeq ($(BUILD_TARGET), $(ARTIFACT_BUILD_TARGET))
+ifeq ($(BUILD_TARGET), $(ARTIFACT_BUILD_TARGET))
     BUILD_FLAGS += --output type=local,dest=$(OUTPUT_DIR)
-#else
-    #BUILD_FLAGS += --load
-#endif
+else
+    BUILD_FLAGS += --load
+endif
 
 BUILD_FLAGS += $(EXTRA_BUILD_FLAGS)
 

@@ -53,7 +53,6 @@ ENV DEBCONF_NONINTERACTIVE_SEEN=true
 FROM base-builder AS rootfs-builder
 # Install required packages for the build process
 # Then run debootstrap to create the minimal Debian system
-COPY /debstrap/target-hooks/ /hooks/
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt/lists <<EOFDOCKER
 set -eux
@@ -119,41 +118,62 @@ FROM rootfs-builder AS targetfs-build
 WORKDIR /build
 ENV ROOTFS_DIR="/rootfs"
 ENV MMDEBSTRAP_VARIANT="apt"
-ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
+ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot-efi,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
 COPY /debstrap/target-hooks/ /hooks/
-COPY /debstrap/dracut.conf /etc/dracut.conf.d/01-whistlekube.conf
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 
-RUN --security=insecure <<EOFDOCKER
-echo "=== Building TARGET rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ==="
-/scripts/build-rootfs.sh
-EOFDOCKER
+RUN --security=insecure \
+    echo "=== Building TARGET rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
+    /scripts/build-rootfs.sh
 
-# === Target rootfs build ===
-# This stage builds the target root filesystem
-FROM targetfs-build AS initramfs-build
+RUN echo "=== Squashing target filesystem ===" && \
+    mksquashfs /rootfs "/rootfs.squashfs" -comp xz -no-xattrs -no-fragments -wildcards -b 1M
 
-WORKDIR /build
+## # === Installer rootfs build ===
+## FROM rootfs-builder AS installerfs-build
+## 
+## WORKDIR /build
+## ENV ROOTFS_DIR="/rootfs"
+## ENV MMDEBSTRAP_VARIANT="apt"
+## ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
+## COPY /debstrap/installer-hooks/ /hooks/
+## COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
+## 
+## RUN --security=insecure \
+##     echo "=== Building INSTALLER rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
+##     /scripts/build-rootfs.sh
+## 
+## RUN echo "=== Squashing installer filesystem ===" && \
+##     mksquashfs /rootfs "/rootfs.squashfs" -comp xz -no-xattrs -no-fragments -wildcards -b 1M
+
+# === EFI build ===
+# This stage builds the EFI file containing the kernel and initramfs
+FROM targetfs-build AS efi-build
+
+WORKDIR /work
 ENV ROOTFS_DIR="/rootfs"
 ENV MODULE_DIR="${ROOTFS_DIR}/usr/lib/modules/${KVER}/kernel/drivers/firmware"
 ENV FIRMWARE_DIR="${ROOTFS_DIR}/usr/lib/modules/${KVER}/kernel/drivers/firmware"
-COPY /debstrap/dracut.conf /etc/dracut.conf.d/01-whistlekube.conf
+COPY /debstrap/dracut.conf .
 
 RUN --security=insecure <<EOFDOCKER
 set -eux
-
 echo "=== Building TARGET initramfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ==="
 KVER=$(ls -1 $ROOTFS_DIR/usr/lib/modules | sort -V | tail -n1)
+ln -s ${ROOTFS_DIR}/boot/vmlinuz-${KVER} /boot/
 dracut \
+    --conf dracut.conf \
     --kver ${KVER} \
     --kmoddir ${ROOTFS_DIR}/usr/lib/modules/${KVER} \
+    --fwdir ${ROOTFS_DIR}/usr/lib/firmware \
     --no-hostonly \
+    --uefi \
     --force \
-    /initramfs.img
+    /linux.efi
 EOFDOCKER
 
-FROM scratch AS initramfs-artifact
-COPY --from=initramfs-build /initramfs.img /initramfs.img
+#FROM scratch AS initramfs-artifact
+#COPY --from=initramfs-build /initramfs.img /initramfs.img
 
 
 #ENV MMDEBSTRAP_INCLUDE="dpkg,busybox,systemd-boot,linux-image-amd64,grub-efi-amd64,grub-efi-amd64-signed,efibootmgr,squashfs-tools"
@@ -288,41 +308,116 @@ COPY --from=initramfs-build /initramfs.img /initramfs.img
 # This stage builds the grub images and the final bootable ISO
 FROM base-builder AS iso-build
 
-ENV ISO_DIR="/cdrom"
+ARG ISO_FILENAME
+ARG ISO_LABEL="WHISTLEKUBE_ISO"
+ARG ISO_APPID="Whistlekube Installer"
+ARG ISO_PUBLISHER="Whistlekube"
+ARG ISO_PREPARER="Built with xorriso"
+
+ENV ISO_DIR="/iso"
+ENV EFI_DIR="/EFI"
+ENV EFI_MOUNT_POINT="/efimount"
 ENV REPO_BINARY_DIR="${ISO_DIR}/pool/main/binary-${DEBIAN_ARCH}"
 ENV REPO_DIST_DIR="${ISO_DIR}/dists/${DEBIAN_RELEASE}/main/binary-${DEBIAN_ARCH}"
 
-WORKDIR /build
+RUN <<EOFDOCKER
+set -eux
+apt-get update
+apt-get install -y --no-install-recommends \
+    xorriso \
+    dosfstools \
+    grub-pc-bin \
+    grub-efi-amd64-bin \
+    grub2-common \
+    apt-utils \
+    xz-utils
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+EOFDOCKER
+
+# Make the EFI patition image
+#COPY --from=targetfs-build /rootfs/vmlinuz ${EFI_DIR}/vmlinuz
+COPY --from=efi-build /linux.efi ${ISO_DIR}/linux.efi
+COPY --from=efi-build /usr/lib/systemd/boot/efi/systemd-bootx64.efi ${EFI_DIR}/EFI/BOOT/BOOTX64.EFI
+COPY --from=efi-build /usr/lib/systemd/boot/efi/systemd-bootx64.efi ${ISO_DIR}/EFI/BOOT/BOOTX64.EFI
+COPY /boot/loader/ ${EFI_DIR}/loader/
+RUN --security=insecure <<EOFDOCKER
+    set -eux
+    dd if=/dev/zero of="/efiboot.img" bs=1M count=10
+    mkfs.vfat -F 32 "/efiboot.img"
+    mkdir -p "${EFI_MOUNT_POINT}"
+    mount -o loop "/efiboot.img" "${EFI_MOUNT_POINT}"
+    cp -a "${EFI_DIR}"/* "${EFI_MOUNT_POINT}/"
+    ls -lah "${EFI_MOUNT_POINT}"/EFI/BOOT/
+    umount "${EFI_MOUNT_POINT}"
+EOFDOCKER
+
+COPY --from=targetfs-build /rootfs.squashfs ${ISO_DIR}/live/filesystem.squashfs
+RUN mkdir -p ${ISO_DIR}/EFI && \
+    cp /efiboot.img ${ISO_DIR}/efiboot.img && \
+    mkdir -p ${OUTPUT_DIR} && \
+    xorriso \
+    -as mkisofs \
+    -iso-level 3 \
+    -rock --joliet --joliet-long \
+    -full-iso9660-filenames \
+    -volid "${ISO_LABEL}" \
+    -appid "${ISO_APPID}" \
+    -publisher "${ISO_PUBLISHER}" \
+    -preparer "${ISO_PREPARER}" \
+    -eltorito-alt-boot \
+        -e /efiboot.img \
+        -no-emul-boot \
+        -boot-load-size 4 \
+        -boot-info-table \
+    -append_partition 2 0xef /iso/efiboot.img \
+    -partition_cyl_align all \
+    -output ${OUTPUT_DIR}/${ISO_FILENAME} \
+    ${ISO_DIR}
+
+#    -partition_offset 16 \
+#    -append_partition 2 0xef "${ISO_DIR}/EFI/efiboot.img" \
+#    -graft-points \
+#        EFI=EFI \
+#        loader=loader \
+#        linux.efi=linux.efi \
+
 
 # Install required packages for the build process
 # and build the local installer repository
-COPY --from=targetfs-build ${OUTPUT_DIR}/grub-debs/ ${REPO_BINARY_DIR}/
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update -y && \
-    apt-get install -y --no-install-recommends \
-        grub-pc-bin \
-        grub-efi-amd64-bin \
-        grub2-common \
-        apt-utils \
-        xz-utils \
-        xorriso \
-        cpio \
-        genisoimage \
-        dosfstools \
-        mtools && \
-    echo "=== Building local installer repository ===" && \
-    mkdir -p "${REPO_BINARY_DIR}" "${REPO_DIST_DIR}" && \
-    cd "${ISO_DIR}" && \
-    apt-ftparchive packages pool/main > "${REPO_DIST_DIR}/Packages" && \
-    gzip -k "${REPO_DIST_DIR}/Packages" && \
-    apt-ftparchive release dists/trixie/main > "${REPO_DIST_DIR}/Release" && \
-    echo "********* PACKAGES *********" && \
-    cat "${REPO_DIST_DIR}/Packages.gz" | gunzip && \
-    echo "********* RELEASE *********" && \
-    cat "${REPO_DIST_DIR}/Release" && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+#COPY --from=targetfs-build /rootfs.squashfs ${ISO_DIR}/rootfs.squashfs
+#COPY --from=initramfs-artifact /initramfs.img ${ISO_DIR}/initramfs.img
+#RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+#    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+#    apt-get update -y && \
+#    apt-get install -y --no-install-recommends \
+#        grub-pc-bin \
+#        grub-efi-amd64-bin \
+#        grub2-common \
+#        apt-utils \
+#        xz-utils \
+#        xorriso \
+#        cpio \
+#        genisoimage \
+#        dosfstools \
+#        mtools && \
+#    apt-get clean && \
+#    rm -rf /var/lib/apt/lists/*
+
+#RUN <<EOFDOCKER
+#    echo "=== Building local installer repository ===" && \
+#    mkdir -p "${REPO_BINARY_DIR}" "${REPO_DIST_DIR}" && \
+#    cd "${ISO_DIR}" && \
+#    apt-ftparchive packages pool/main > "${REPO_DIST_DIR}/Packages" && \
+#    gzip -k "${REPO_DIST_DIR}/Packages" && \
+#    apt-ftparchive release dists/trixie/main > "${REPO_DIST_DIR}/Release" && \
+#    echo "********* PACKAGES *********" && \
+#    cat "${REPO_DIST_DIR}/Packages.gz" | gunzip && \
+#    echo "********* RELEASE *********" && \
+#    cat "${REPO_DIST_DIR}/Release" && \
+#    apt-get clean && \
+#    rm -rf /var/lib/apt/lists/*
+#EOFDOCKER
 
 ##### # Copy the kernel, initrd, and squashfs files from the chroot builders
 ##### COPY --from=livefs-build ${OUTPUT_DIR}/filesystem.squashfs ${ISO_DIR}/live/filesystem.squashfs
@@ -346,19 +441,19 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 ##### # Build the GRUB images for BIOS and EFI boot and the final ISO
 ##### RUN --security=insecure \
 #####     ./build-iso.sh
-##### 
-##### # === Artifact ===
-##### # This stage builds the final artifact container
-##### # It simply copies the output directory from the ISO builder stage
-##### FROM scratch AS artifact
-##### 
-##### ARG OUTPUT_DIR
-##### 
-##### # Labels following OCI image spec
-##### LABEL org.opencontainers.image.title="Whistlekube Installer ISO Artifacts"
-##### LABEL org.opencontainers.image.description="Image containing the whistlekube installer ISO and other artifacts"
-##### LABEL org.opencontainers.image.version="1.0.0"
-##### LABEL org.opencontainers.image.authors="Joe Kramer <joe@whistlekube.com>"
-##### LABEL org.opencontainers.image.source="https://github.com/whistlekube/image"
-##### 
-##### COPY --from=iso-build ${OUTPUT_DIR}/ /
+
+# === Artifact ===
+# This stage builds the final artifact container
+# It simply copies the output directory from the ISO builder stage
+FROM scratch AS artifact
+
+ARG OUTPUT_DIR
+
+# Labels following OCI image spec
+LABEL org.opencontainers.image.title="Whistlekube Installer ISO Artifacts"
+LABEL org.opencontainers.image.description="Image containing the whistlekube installer ISO and other artifacts"
+LABEL org.opencontainers.image.version="1.0.0"
+LABEL org.opencontainers.image.authors="Joe Kramer <joe@whistlekube.com>"
+LABEL org.opencontainers.image.source="https://github.com/whistlekube/image"
+
+COPY --from=iso-build ${OUTPUT_DIR}/ /
