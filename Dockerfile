@@ -39,41 +39,16 @@ apt-get clean
 rm -rf /var/lib/apt/lists/*
 EOFDOCKER
 
-ENV MMDEBSTRAP_APT_OPTIONS="\
-  --aptopt='APT::Sandbox::User \"root\"' \
-  --aptopt='APT::Install-Recommends \"false\"' \
-  --aptopt='APT::Install-Suggests \"false\"' \
-  --aptopt='Acquire::Languages { \"environment\"; \"en\"; }' \
-  --aptopt='Acquire::Languages \"none\"' \
-  --dpkgopt=path-exclude=/usr/share/man/* \
-  --dpkgopt=path-exclude=/usr/share/bug/* \
-  --dpkgopt=path-exclude=/usr/share/info/* \
-  --dpkgopt=path-exclude=/usr/share/locale/* \
-  --dpkgopt=path-include=/usr/share/locale/locale.alias \
-  --dpkgopt=path-exclude=/usr/share/bash-completion/* \
-  --dpkgopt=path-exclude=/usr/share/doc/* \
-  --dpkgopt=path-include=/usr/share/doc/*/copyright \
-  --dpkgopt=path-exclude=/usr/share/fish/* \
-  --dpkgopt=path-exclude=/usr/share/zsh/*"
-
-# === Kernel rootfs build ===
-# This stage downloads the kernel and firmware packages and extracts them to the rootfs
-FROM rootfs-builder AS kernelfs-build
-ENV ROOTFS_DIR="/kernelfs"
-ENV MMDEBSTRAP_VARIANT="extract"
-ENV MMDEBSTRAP_INCLUDE="linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
-COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
-RUN --security=insecure \
-    echo "=== Building KERNEL rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
-    mmdebstrap \
-      --verbose \
-      --variant="extract" \
-      --include="linux-image-amd64,firmware-linux-free,firmware-linux-nonfree" \
-      --components="main contrib non-free non-free-firmware" \
-      ${MMDEBSTRAP_APT_OPTIONS} \
-      $DEBIAN_RELEASE \
-      $ROOTFS_DIR \
-      $DEBIAN_MIRROR
+## # === Kernel rootfs build ===
+## # This stage downloads the kernel and firmware packages and extracts them to the rootfs
+## FROM rootfs-builder AS kernelfs-build
+## ENV ROOTFS_DIR="/kernelfs"
+## ENV MMDEBSTRAP_VARIANT="essential"
+## ENV MMDEBSTRAP_INCLUDE="live-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
+## COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
+## RUN --security=insecure \
+##     echo "=== Building KERNEL rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
+##     /scripts/build-rootfs.sh
 #    mmdebstrap \
 #        --verbose \
 #        --variant="extract" \
@@ -99,36 +74,37 @@ RUN --security=insecure \
 #        $ROOTFS_DIR \
 #        "https://deb.debian.org/debian"
 
-# === initramfs build ===
-# This stage builds the initramfs with dracut
-FROM base-builder AS initrd-build
-COPY --from=kernelfs-build /kernelfs/ /kernelfs/
-# Install required packages for the build process
-# Then run debootstrap to create the minimal Debian system
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt/lists <<EOFDOCKER
-set -eux
-apt-get update
-apt-get install -y --no-install-recommends \
-    dracut \
-    dracut-live \
-    ca-certificates
-apt-get clean
-rm -rf /var/lib/apt/lists/*
-EOFDOCKER
-
-RUN <<EOFDOCKER
-KVER=$(ls -1 /kernelfs/usr/lib/modules | sort -V | tail -n1)
-depmod -b /kernelfs/usr -a ${KVER}
-DRACUT_KMODDIR_OVERRIDE=1 dracut \
-    --force \
-    --no-hostonly \
-    --add "dmsquash-live" \
-    --add-drivers "squashfs" \
-    --kver=${KVER} \
-    --kmoddir /kernelfs/usr/lib/modules/${KVER} \
-    /initrd-live.img
-EOFDOCKER
+## # === initramfs build ===
+## # This stage builds the initramfs with dracut
+## FROM base-builder AS initrd-build
+## COPY --from=kernelfs-build /kernelfs/ /kernelfs/
+## # Install required packages for the build process
+## # Then run debootstrap to create the minimal Debian system
+## RUN --mount=type=cache,target=/var/cache/apt \
+##     --mount=type=cache,target=/var/lib/apt/lists <<EOFDOCKER
+## set -eux
+## apt-get update
+## apt-get install -y --no-install-recommends \
+##     #dracut-core \
+##     #dracut-live \
+##     mkinitramfs-tools \
+##     live-boot \
+##     ca-certificates
+## apt-get clean
+## rm -rf /var/lib/apt/lists/*
+## EOFDOCKER
+## 
+## RUN <<EOFDOCKER
+## KVER=$(ls -1 /kernelfs/usr/lib/modules | sort -V | tail -n1)
+## depmod -b /kernelfs/usr -a ${KVER}
+## DRACUT_KMODDIR_OVERRIDE=1 dracut \
+##     --force \
+##     --no-hostonly \
+##     --add "dmsquash-live base kernel-modules" \
+##     --kver=${KVER} \
+##     --kmoddir /kernelfs/usr/lib/modules/${KVER} \
+##     /initrd-live.img
+## EOFDOCKER
 
 
 #mmdebstrap \
@@ -161,10 +137,10 @@ EOFDOCKER
 FROM rootfs-builder AS installerfs-build
 WORKDIR /build
 ENV ROOTFS_DIR="/rootfs"
-ENV MMDEBSTRAP_VARIANT="apt"
+ENV MMDEBSTRAP_VARIANT="essential"
 #ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
-ENV MMDEBSTRAP_INCLUDE="zstd,systemd-sysv,dracut,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,dialog,squashfs-tools,parted,gdisk,e2fsprogs,lvm2,cryptsetup,dosfstools,ca-certificates"
-COPY /boot/ /config/boot/
+ENV MMDEBSTRAP_INCLUDE="live-boot,live-config-systemd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,systemd-sysv,dialog,squashfs-tools,parted,gdisk,e2fsprogs,lvm2,cryptsetup,dosfstools,ca-certificates"
+#COPY /boot/ /config/boot/
 COPY /debstrap/installer-hooks/ /hooks/
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \
@@ -201,8 +177,8 @@ WORKDIR /build
 ENV ROOTFS_DIR="/rootfs"
 ENV MMDEBSTRAP_VARIANT="apt"
 #ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
-ENV MMDEBSTRAP_INCLUDE="zstd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,systemd-sysv,live-boot,live-config"
-COPY /boot/ /config/boot/
+ENV MMDEBSTRAP_INCLUDE="systemd-sysv"
+#COPY /boot/ /config/boot/
 COPY /debstrap/target-hooks/ /hooks/
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \
@@ -333,9 +309,10 @@ rm -rf /var/lib/apt/lists/*
 EOFDOCKER
 
 COPY --from=installerfs-build /output/installer.squashfs ${ISO_DIR}/live/filesystem.squashfs
+COPY --from=installerfs-build /rootfs/boot/vmlinuz-* ${ISO_DIR}/live/vmlinuz
+COPY --from=installerfs-build /rootfs/boot/initrd.img-* ${ISO_DIR}/live/initrd.img
 COPY --from=targetfs-build /output/rootfs.squashfs ${ISO_DIR}/install/filesystem.squashfs
-COPY --from=kernelfs-build /kernelfs/boot/vmlinuz-* ${ISO_DIR}/live/vmlinuz
-COPY --from=initrd-build /initrd-live.img ${ISO_DIR}/live/initrd.img
+#COPY --from=initrd-build /initrd-live.img ${ISO_DIR}/live/initrd.img
 COPY /boot/grub/grub.cfg ${ISO_DIR}/boot/grub/grub.cfg
 COPY --from=efi-build ${OUTPUT_DIR}/efi.img ${ISO_DIR}/boot/grub/efi.img
 COPY --from=efi-build ${OUTPUT_DIR}/core.img ${ISO_DIR}/boot/grub/core.img
