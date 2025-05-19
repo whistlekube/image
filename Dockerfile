@@ -45,6 +45,47 @@ apt-get clean
 rm -rf /var/lib/apt/lists/*
 EOFDOCKER
 
+# === Kernel rootfs build ===
+# This stage installs the kernel and firmware packages
+FROM rootfs-builder AS kernelfs-build
+WORKDIR /build
+ENV ROOTFS_DIR="/rootfs"
+ENV MMDEBSTRAP_VARIANT="extract"
+#ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
+#ENV MMDEBSTRAP_INCLUDE="linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
+ENV MMDEBSTRAP_INCLUDE="linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
+COPY /boot/ /config/boot/
+COPY /debstrap/installer-hooks/ /hooks/
+COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
+RUN --security=insecure \
+    echo "=== Building KERNEL rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
+    /scripts/build-rootfs.sh
+
+#mmdebstrap \
+#    --verbose \
+#    --variant="extract" \
+#    --mode="chrootless" \
+#    --include="linux-image-amd64" \
+#    --skip=check/chrootless \
+#    --components="main contrib non-free non-free-firmware" \
+#    --aptopt='APT::Sandbox::User "root"' \
+#    --aptopt='APT::Install-Recommends "false"' \
+#    --aptopt='APT::Install-Suggests "false"' \
+#    --aptopt='Acquire::Languages { "environment"; "en"; }' \
+#    --aptopt='Acquire::Languages "none"' \
+#    --dpkgopt=path-exclude=/usr/share/man/* \
+#    --dpkgopt=path-exclude=/usr/share/info/* \
+#    --dpkgopt=path-exclude=/usr/share/locale/* \
+#    --dpkgopt=path-include=/usr/share/locale/locale.alias \
+#    --dpkgopt=path-exclude=/usr/share/bash-completion/* \
+#    --dpkgopt=path-exclude=/usr/share/doc/* \
+#    --dpkgopt=path-include=/usr/share/doc/*/copyright \
+#    --dpkgopt=path-exclude=/usr/share/fish/* \
+#    --dpkgopt=path-exclude=/usr/share/zsh/* \
+#    $DEBIAN_RELEASE \
+#    $ROOTFS_DIR \
+#    "https://deb.debian.org/debian"
+
 # === Installer rootfs build ===
 # This stage builds the installer root filesystem
 FROM rootfs-builder AS installerfs-build
@@ -52,7 +93,7 @@ WORKDIR /build
 ENV ROOTFS_DIR="/rootfs"
 ENV MMDEBSTRAP_VARIANT="apt"
 #ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
-ENV MMDEBSTRAP_INCLUDE="zstd,systemd-sysv,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,live-boot,live-config,live-config-systemd,dialog,squashfs-tools,parted,gdisk,e2fsprogs,lvm2,cryptsetup,dosfstools,ca-certificates"
+ENV MMDEBSTRAP_INCLUDE="zstd,systemd-sysv,dracut,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,dialog,squashfs-tools,parted,gdisk,e2fsprogs,lvm2,cryptsetup,dosfstools,ca-certificates"
 COPY /boot/ /config/boot/
 COPY /debstrap/installer-hooks/ /hooks/
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
@@ -149,16 +190,21 @@ EOFDOCKER
 
 # Make the EFI patition image
 COPY /boot/grub/ /config/boot/grub/
+#COPY /boot/loader/ /efi/loader/
+#COPY --from=installerfs-build /rootfs/usr/lib/systemd/boot/efi/systemd-bootx64.efi /efi/EFI/BOOT/BOOTX64.EFI
+#COPY --from=installerfs-build /rootfs/usr/lib/systemd/boot/efi/systemd-bootx64.efi /efi/EFI/systemd/systemd-bootx64.efi
 RUN --security=insecure <<EOFDOCKER
 set -eux
 mkdir -p ${OUTPUT_DIR}
 # Create a new EFI filesystem image
-dd if=/dev/zero of="${OUTPUT_DIR}/efi.img" bs=1M count=8
+dd if=/dev/zero of="${OUTPUT_DIR}/efi.img" bs=1M count=20
+mkdir -p "${EFI_MOUNT_POINT}"
 mkfs.fat -F 12 -n "UEFI_BOOT" "${OUTPUT_DIR}/efi.img"
 # Mount the EFI filesystem image
-mkdir -p "${EFI_MOUNT_POINT}"
 mount -o loop "${OUTPUT_DIR}/efi.img" "${EFI_MOUNT_POINT}"
 mkdir -p "${EFI_MOUNT_POINT}/EFI/BOOT"
+#cp -r /efi/* "${EFI_MOUNT_POINT}"
+#find "${EFI_MOUNT_POINT}"
 # Copy the EFI files to the EFI filesystem image
 grub-mkstandalone \
     -O x86_64-efi \
@@ -168,7 +214,7 @@ grub-mkstandalone \
     --themes "" \
     "boot/grub/grub.cfg=/config/boot/grub/grub.cfg"
 # Unmount the EFI filesystem image
-cp /config/boot/grub/grub.cfg "${EFI_MOUNT_POINT}/EFI/BOOT/grub.cfg"
+#cp /config/boot/grub/grub.cfg "${EFI_MOUNT_POINT}/EFI/BOOT/grub.cfg"
 umount "${EFI_MOUNT_POINT}"
 
 # Make grub core image

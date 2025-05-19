@@ -9,6 +9,7 @@ LINUX_PACKAGES="linux-image-amd64"
 DEBIAN_RELEASE=${DEBIAN_RELEASE:-trixie}
 ROOTFS_DIR=${ROOTFS_DIR:-$PWD/rootfs}
 MMDEBSTRAP_VARIANT=${MMDEBSTRAP_VARIANT:-apt}
+MMDEBSTRAP_MODE=${MMDEBSTRAP_MODE:-auto}
 MMDEBSTRAP_INCLUDE=${MMDEBSTRAP_INCLUDE:-"${SYSTEMD_PACKAGES} ${LINUX_PACKAGES}"}
 EXTRA_APT_OPTIONS=${EXTRA_APT_OPTIONS:-}
 HOOK_DIR=${HOOK_DIR:-/hooks}
@@ -18,8 +19,9 @@ echo "Creating rootfs with mmdebstrap..."
 mmdebstrap \
   --verbose \
   --variant=${MMDEBSTRAP_VARIANT} \
+  --mode=${MMDEBSTRAP_MODE} \
   --include="$MMDEBSTRAP_INCLUDE" \
-  --hook-dir=${HOOK_DIR} \
+  --skip=check/chrootless \
   --components="main contrib non-free non-free-firmware" \
   --aptopt='APT::Install-Recommends "false"' \
   --aptopt='APT::Install-Suggests "false"' \
@@ -39,6 +41,11 @@ mmdebstrap \
   "$DEBIAN_RELEASE" \
   $ROOTFS_DIR \
   "https://deb.debian.org/debian"
+
+
+
+#  --hook-dir=${HOOK_DIR} \
+
 
 
 
