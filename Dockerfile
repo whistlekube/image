@@ -38,130 +38,35 @@ apt-get install -y --no-install-recommends \
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 EOFDOCKER
-
-## # === Kernel rootfs build ===
-## # This stage downloads the kernel and firmware packages and extracts them to the rootfs
-## FROM rootfs-builder AS kernelfs-build
-## ENV ROOTFS_DIR="/kernelfs"
-## ENV MMDEBSTRAP_VARIANT="essential"
-## ENV MMDEBSTRAP_INCLUDE="live-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
-## COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
-## RUN --security=insecure \
-##     echo "=== Building KERNEL rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
-##     /scripts/build-rootfs.sh
-#    mmdebstrap \
-#        --verbose \
-#        --variant="extract" \
-#        --include="linux-image-amd64,firmware-linux-free,firmware-linux-nonfree" \
-#        --components="main contrib non-free non-free-firmware" \
-#        --aptopt='APT::Sandbox::User "root"' \
-#        --aptopt='APT::Install-Recommends "false"' \
-#        --aptopt='APT::Install-Suggests "false"' \
-#        --aptopt='Acquire::Languages { "environment"; "en"; }' \
-#        --aptopt='Acquire::Languages "none"' \
-#        --dpkgopt=path-exclude=/usr/lib/modules/*/sound/* \
-#        --dpkgopt=path-exclude=/usr/share/man/* \
-#        --dpkgopt=path-exclude=/usr/share/bug/* \
-#        --dpkgopt=path-exclude=/usr/share/info/* \
-#        --dpkgopt=path-exclude=/usr/share/locale/* \
-#        --dpkgopt=path-include=/usr/share/locale/locale.alias \
-#        --dpkgopt=path-exclude=/usr/share/bash-completion/* \
-#        --dpkgopt=path-exclude=/usr/share/doc/* \
-#        --dpkgopt=path-include=/usr/share/doc/*/copyright \
-#        --dpkgopt=path-exclude=/usr/share/fish/* \
-#        --dpkgopt=path-exclude=/usr/share/zsh/* \
-#        "$DEBIAN_RELEASE" \
-#        $ROOTFS_DIR \
-#        "https://deb.debian.org/debian"
-
-## # === initramfs build ===
-## # This stage builds the initramfs with dracut
-## FROM base-builder AS initrd-build
-## COPY --from=kernelfs-build /kernelfs/ /kernelfs/
-## # Install required packages for the build process
-## # Then run debootstrap to create the minimal Debian system
-## RUN --mount=type=cache,target=/var/cache/apt \
-##     --mount=type=cache,target=/var/lib/apt/lists <<EOFDOCKER
-## set -eux
-## apt-get update
-## apt-get install -y --no-install-recommends \
-##     #dracut-core \
-##     #dracut-live \
-##     mkinitramfs-tools \
-##     live-boot \
-##     ca-certificates
-## apt-get clean
-## rm -rf /var/lib/apt/lists/*
-## EOFDOCKER
-## 
-## RUN <<EOFDOCKER
-## KVER=$(ls -1 /kernelfs/usr/lib/modules | sort -V | tail -n1)
-## depmod -b /kernelfs/usr -a ${KVER}
-## DRACUT_KMODDIR_OVERRIDE=1 dracut \
-##     --force \
-##     --no-hostonly \
-##     --add "dmsquash-live base kernel-modules" \
-##     --kver=${KVER} \
-##     --kmoddir /kernelfs/usr/lib/modules/${KVER} \
-##     /initrd-live.img
-## EOFDOCKER
-
-
-#mmdebstrap \
-#    --verbose \
-#    --variant="extract" \
-#    --mode="chrootless" \
-#    --include="linux-image-amd64" \
-#    --skip=check/chrootless \
-#    --components="main contrib non-free non-free-firmware" \
-#    --aptopt='APT::Sandbox::User "root"' \
-#    --aptopt='APT::Install-Recommends "false"' \
-#    --aptopt='APT::Install-Suggests "false"' \
-#    --aptopt='Acquire::Languages { "environment"; "en"; }' \
-#    --aptopt='Acquire::Languages "none"' \
-#    --dpkgopt=path-exclude=/usr/share/man/* \
-#    --dpkgopt=path-exclude=/usr/share/info/* \
-#    --dpkgopt=path-exclude=/usr/share/locale/* \
-#    --dpkgopt=path-include=/usr/share/locale/locale.alias \
-#    --dpkgopt=path-exclude=/usr/share/bash-completion/* \
-#    --dpkgopt=path-exclude=/usr/share/doc/* \
-#    --dpkgopt=path-include=/usr/share/doc/*/copyright \
-#    --dpkgopt=path-exclude=/usr/share/fish/* \
-#    --dpkgopt=path-exclude=/usr/share/zsh/* \
-#    $DEBIAN_RELEASE \
-#    $ROOTFS_DIR \
-#    "https://deb.debian.org/debian"
+ENV ROOTFS_DIR="/rootfs"
 
 # === Installer rootfs build ===
 # This stage builds the installer root filesystem
-FROM rootfs-builder AS installerfs-build
-WORKDIR /build
-ENV ROOTFS_DIR="/rootfs"
+FROM rootfs-builder AS installer-debstrap
 ENV MMDEBSTRAP_VARIANT="essential"
-#ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
 ENV MMDEBSTRAP_INCLUDE="live-boot,live-config-systemd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,systemd-sysv,dialog,squashfs-tools,parted,gdisk,e2fsprogs,lvm2,cryptsetup,dosfstools,ca-certificates"
-#COPY /boot/ /config/boot/
-COPY /debstrap/installer-hooks/ /hooks/
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \
     echo "=== Building INSTALLER rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
     /scripts/build-rootfs.sh
-COPY /overlays/live/ /rootfs/
-RUN --security=insecure \
-    echo "=== Configuring INSTALLER rootfs ===" && \
-    mount --bind /dev /rootfs/dev && \
-    mount --bind /proc /rootfs/proc && \
-    mount --bind /sys /rootfs/sys && \
-    mount --bind /run /rootfs/run && \
-    mount --bind /dev/pts /rootfs/dev/pts && \
-    mount --bind /dev/shm /rootfs/dev/shm && \
-    chroot /rootfs systemctl enable whistlekube-installer.service && \
-    umount /rootfs/dev/pts && \
-    umount /rootfs/dev/shm && \
-    umount /rootfs/dev && \
-    umount /rootfs/proc && \
-    umount /rootfs/sys && \
-    umount /rootfs/run
+
+# === Configure the installer rootfs ===
+FROM installer-debstrap AS installer-configure
+COPY /installer/overlay/ /rootfs/
+COPY /installer/configure-chroot.sh /rootfs/configure-chroot.sh
+COPY /scripts/mount-chroot.sh /scripts/mount-chroot.sh
+COPY /scripts/umount-chroot.sh /scripts/umount-chroot.sh
+RUN --security=insecure <<EOFDOCKER
+set -eux
+echo "=== Configuring INSTALLER rootfs ==="
+/scripts/mount-chroot.sh
+chroot /rootfs /configure-chroot.sh
+/scripts/umount-chroot.sh
+rm -f /rootfs/configure-chroot.sh
+EOFDOCKER
+
+# === Build the installer squashfs ===
+FROM installer-configure AS installerfs-build
 RUN echo "=== Squashing INSTALLER filesystem ===" && \
     mkdir -p ${OUTPUT_DIR} && \
     mksquashfs /rootfs ${OUTPUT_DIR}/installer.squashfs -comp xz -no-xattrs -no-fragments -wildcards -b 1M

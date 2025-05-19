@@ -6,3 +6,5 @@ rootdir="$1"
 
 rm -f "$rootdir/etc/resolv.conf"
 rm -f "$rootdir/etc/hostname"
+
+chroot "$rootdir" systemctl enable whistlekube-installer.service

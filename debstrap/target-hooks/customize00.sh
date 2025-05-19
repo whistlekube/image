@@ -6,8 +6,8 @@ rootdir="$1"
 #efi_mount_dir="/efimount"
 
 # Copy linux kernel and initrd to the output directory
-cp -L $rootdir/vmlinuz "/output/vmlinuz"
-cp -L $rootdir/initrd.img "/output/initrd.img"
+#cp -L $rootdir/vmlinuz "/output/vmlinuz"
+#cp -L $rootdir/initrd.img "/output/initrd.img"
 
 rm -f "$rootdir/etc/resolv.conf"
 rm -f "$rootdir/etc/hostname"
