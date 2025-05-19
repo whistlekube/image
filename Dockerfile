@@ -98,8 +98,7 @@ ARG EFI_MOUNT_POINT="/efimount"
 
 WORKDIR /build
 
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt/lists <<EOFDOCKER
+RUN <<EOFDOCKER
 set -eux
 apt-get update
 apt-get install -y --no-install-recommends \
@@ -118,11 +117,11 @@ mkdir -p ${OUTPUT_DIR}
 mkdir -p "${EFI_TARGET_MOUNT_POINT}"
 mount -o loop target-efi.img "${EFI_TARGET_MOUNT_POINT}"
 # Create a new EFI filesystem image
-dd if=/dev/zero of="${OUTPUT_DIR}/efi.img" bs=1M count=10
-mkfs.vfat -F 32 "${OUTPUT_DIR}/efi.img"
+dd if=/dev/zero of="${OUTPUT_DIR}/live-efi.img" bs=1M count=10
+mkfs.vfat -F 32 "${OUTPUT_DIR}/live-efi.img"
 # Mount the EFI filesystem image
 mkdir -p "${EFI_MOUNT_POINT}"
-mount -o loop "${OUTPUT_DIR}/efi.img" "${EFI_MOUNT_POINT}"
+mount -o loop "${OUTPUT_DIR}/live-efi.img" "${EFI_MOUNT_POINT}"
 # Copy the EFI files to the EFI filesystem image
 cp -a ${EFI_TARGET_MOUNT_POINT}/EFI ${EFI_MOUNT_POINT}/EFI
 cp -a ./boot ${EFI_MOUNT_POINT}/loader
@@ -133,6 +132,10 @@ cp -a ${EFI_TARGET_MOUNT_POINT}/initrd.img-* ${OUTPUT_DIR}/initrd.img
 umount "${EFI_MOUNT_POINT}"
 umount "${EFI_TARGET_MOUNT_POINT}"
 EOFDOCKER
+
+FROM scratch AS efi-artifact
+ARG OUTPUT_DIR
+COPY --from=efi-build ${OUTPUT_DIR} /
 
 # === ISO build ===
 # This stage builds the grub images and the final bootable ISO
@@ -161,7 +164,7 @@ rm -rf /var/lib/apt/lists/*
 EOFDOCKER
 
 COPY --from=targetfs-build /output/rootfs.squashfs ${ISO_DIR}/live/filesystem.squashfs
-COPY --from=efi-build ${OUTPUT_DIR}/efi.img /efi.img
+COPY --from=efi-build ${OUTPUT_DIR}/live-efi.img /efi.img
 COPY --from=efi-build ${OUTPUT_DIR}/vmlinuz ${ISO_DIR}/vmlinuz
 COPY --from=efi-build ${OUTPUT_DIR}/initrd.img ${ISO_DIR}/initrd.img
 RUN mkdir -p ${OUTPUT_DIR} && \
@@ -171,6 +174,7 @@ RUN mkdir -p ${OUTPUT_DIR} && \
     -rock --joliet --joliet-long \
     --full-iso9660-filenames \
     -volid "${ISO_LABEL}" \
+    -partition_offset 16 \
     -append_partition 2 0xEF /efi.img \
     -e --interval:appended_partition_2:all:: \
     -no-emul-boot \
