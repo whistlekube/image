@@ -66,14 +66,14 @@ rm -f /rootfs/configure-chroot.sh
 EOFDOCKER
 
 # === Build the installer squashfs ===
-FROM installer-configure AS installerfs-build
+FROM installer-configure AS installer-build
 RUN echo "=== Squashing INSTALLER filesystem ===" && \
     mkdir -p ${OUTPUT_DIR} && \
     mksquashfs /rootfs ${OUTPUT_DIR}/installer.squashfs -comp xz -no-xattrs -no-fragments -wildcards -b 1M
 
 # === Installer rootfs artifact ===
-FROM scratch AS installerfs-artifact
-COPY --from=installerfs-build /output/ /
+FROM scratch AS installer-artifact
+COPY --from=installer-build /output/ /
 
 # === Target rootfs build ===
 # This stage builds the target root filesystem
@@ -202,20 +202,14 @@ set -eux
 apt-get update
 apt-get install -y --no-install-recommends \
     xorriso \
-    dosfstools \
-    apt-utils \
-    grub-common \
-    grub-pc \
-    grub-efi-amd64-bin \
-    grub-efi-amd64-signed \
     xz-utils
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 EOFDOCKER
 
-COPY --from=installerfs-build /output/installer.squashfs ${ISO_DIR}/live/filesystem.squashfs
-COPY --from=installerfs-build /rootfs/boot/vmlinuz-* ${ISO_DIR}/live/vmlinuz
-COPY --from=installerfs-build /rootfs/boot/initrd.img-* ${ISO_DIR}/live/initrd.img
+COPY --from=installer-build /output/installer.squashfs ${ISO_DIR}/live/filesystem.squashfs
+COPY --from=installer-build /rootfs/boot/vmlinuz-* ${ISO_DIR}/live/vmlinuz
+COPY --from=installer-build /rootfs/boot/initrd.img-* ${ISO_DIR}/live/initrd.img
 COPY --from=targetfs-build /output/rootfs.squashfs ${ISO_DIR}/install/filesystem.squashfs
 #COPY --from=initrd-build /initrd-live.img ${ISO_DIR}/live/initrd.img
 COPY /boot/grub/grub.cfg ${ISO_DIR}/boot/grub/grub.cfg
