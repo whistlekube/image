@@ -103,43 +103,48 @@ RUN <<EOFDOCKER
 set -eux
 apt-get update
 apt-get install -y --no-install-recommends \
-    dosfstools
+    dosfstools \
+    grub-common \
+    grub-efi-amd64-bin \
+    grub-efi-amd64-signed \
+    grub-pc
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 EOFDOCKER
 
 # Make the EFI patition image
-COPY /boot/grub/ ./boot/grub/
+COPY /boot/grub/ /config/boot/grub/
 RUN --security=insecure <<EOFDOCKER
 set -eux
 mkdir -p ${OUTPUT_DIR}
-# Mount the target EFI partition
-#mkdir -p "${EFI_TARGET_MOUNT_POINT}"
-#mount -o loop target-efi.img "${EFI_TARGET_MOUNT_POINT}"
 # Create a new EFI filesystem image
-dd if=/dev/zero of="${OUTPUT_DIR}/efi.img" bs=1M count=10
-mkfs.vfat -F 32 -n "EFIBOOT" "${OUTPUT_DIR}/efi.img"
+dd if=/dev/zero of="${OUTPUT_DIR}/efi.img" bs=1M count=8
+mkfs.fat -F 12 -n "UEFI_BOOT" "${OUTPUT_DIR}/efi.img"
 # Mount the EFI filesystem image
 mkdir -p "${EFI_MOUNT_POINT}"
 mount -o loop "${OUTPUT_DIR}/efi.img" "${EFI_MOUNT_POINT}"
+mkdir -p "${EFI_MOUNT_POINT}/EFI/BOOT"
 # Copy the EFI files to the EFI filesystem image
-grub-mkimage \
+grub-mkstandalone \
     -O x86_64-efi \
     -o "${EFI_MOUNT_POINT}/EFI/BOOT/BOOTX64.EFI" \
-    -p /boot/grub \
-    iso9660 normal configfile \
-    echo linux search search_label \
-    part_msdos part_gpt fat ext2 efi_gop efi_uga \
-    all_video font && \
-cp "./boot/grub/grub.cfg" "${EFI_MOUNT_POINT}/EFI/BOOT/grub.cfg"
-#cp -a ${EFI_TARGET_MOUNT_POINT}/EFI ${EFI_MOUNT_POINT}/EFI
-#cp -a ./boot ${EFI_MOUNT_POINT}/loader
-# Copy the kernel and initrd to the output directory
-#cp -a ${EFI_TARGET_MOUNT_POINT}/vmlinuz-* ${OUTPUT_DIR}/vmlinuz
-#cp -a ${EFI_TARGET_MOUNT_POINT}/initrd.img-* ${OUTPUT_DIR}/initrd.img
+    --modules "iso9660 normal configfile echo linux search search_label part_msdos part_gpt fat ext2 efi_gop efi_uga all_video font" \
+    --locales "" \
+    --themes "" \
+    "boot/grub/grub.cfg=/config/boot/grub/grub.cfg"
 # Unmount the EFI filesystem image
+cp /config/boot/grub/grub.cfg "${EFI_MOUNT_POINT}/EFI/BOOT/grub.cfg"
 umount "${EFI_MOUNT_POINT}"
-#umount "${EFI_TARGET_MOUNT_POINT}"
+
+# Make grub core image
+grub-mkimage \
+    -O i386-pc-eltorito \
+    -o "${OUTPUT_DIR}/core.img" \
+    -p /boot/grub \
+    biosdisk iso9660 \
+    normal configfile \
+    echo linux search search_label \
+    part_msdos part_gpt fat ext2
 EOFDOCKER
 
 FROM scratch AS efi-artifact
@@ -167,32 +172,55 @@ apt-get install -y --no-install-recommends \
     xorriso \
     dosfstools \
     apt-utils \
+    grub-common \
+    grub-pc \
+    grub-efi-amd64-bin \
+    grub-efi-amd64-signed \
     xz-utils
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 EOFDOCKER
 
 COPY --from=targetfs-build /output/rootfs.squashfs ${ISO_DIR}/live/filesystem.squashfs
-COPY /boot/ ${ISO_DIR}/loader
-COPY --from=efi-build ${OUTPUT_DIR}/efi.img /efi.img
-RUN mkdir -p ${OUTPUT_DIR} && \
-    xorriso \
-    -as mkisofs \
-    -iso-level 3 \
-    -rock --joliet --joliet-long \
-    --full-iso9660-filenames \
-    -volid "${ISO_LABEL}" \
-    -partition_offset 16 \
-    -c boot.catalog \
-    -eltorito-alt-boot \
-    -e --interval:appended_partition_2:all:: \
-    -no-emul-boot \
-    -append_partition 2 0xEF /efi.img \
-    -appended_part_as_gpt \
-    -no-emul-boot \
-    -output ${OUTPUT_DIR}/${ISO_FILENAME} \
-    ${ISO_DIR}
+COPY --from=targetfs-build /output/vmlinuz ${ISO_DIR}/live/vmlinuz
+COPY --from=targetfs-build /output/initrd.img ${ISO_DIR}/live/initrd.img
+COPY /boot/grub/grub.cfg ${ISO_DIR}/boot/grub/grub.cfg
+COPY --from=efi-build ${OUTPUT_DIR}/efi.img ${ISO_DIR}/boot/grub/efi.img
+COPY --from=efi-build ${OUTPUT_DIR}/core.img ${ISO_DIR}/boot/grub/core.img
+COPY /scripts/build-iso.sh /scripts/build-iso.sh
 
+RUN --security=insecure \
+    /scripts/build-iso.sh
+
+## RUN mkdir -p ${OUTPUT_DIR} && \
+##     xorriso \
+##     -as mkisofs \
+##     -iso-level 3 \
+##     -rock --joliet --joliet-long \
+##     --full-iso9660-filenames \
+##     -volid "${ISO_LABEL}" \
+##     -eltorito-boot boot/grub/core.img \
+##       -no-emul-boot \
+##       -boot-load-size 4 \
+##       -boot-info-table \
+##       --grub2-boot-info \
+##     -eltorito-alt-boot \
+##       -e EFI/efiboot.img \
+##       -no-emul-boot \
+##     -append_partition 2 0xef ${ISO_DIR}/EFI/efiboot.img \
+##     -isohybrid-mbr ${HYBRID_MBR_PATH} \
+##     -isohybrid-gpt-basdat \
+##     -output ${OUTPUT_DIR}/${ISO_FILENAME} \
+##     ${ISO_DIR}
+
+##    -partition_offset 16 \
+##    -c boot.catalog \
+##    -eltorito-alt-boot \
+##    -e --interval:appended_partition_2:all:: \
+##    -no-emul-boot \
+##    -append_partition 2 0xEF /efi.img \
+##    -appended_part_as_gpt \
+##    -isohybrid-gpt-basdat \
 
 ##    -eltorito-alt-boot \
 ##    -e /EFI/BOOT/BOOTX64.EFI \

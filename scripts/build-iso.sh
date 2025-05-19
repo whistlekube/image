@@ -62,20 +62,21 @@ build_iso() {
     -appid "${ISO_APPID}" \
     -publisher "${ISO_PUBLISHER}" \
     -preparer "${ISO_PREPARER}" \
+    --mbr-force-bootable \
+    -apm-block-size 2048 \
     -eltorito-boot boot/grub/core.img \
       -no-emul-boot \
       -boot-load-size 4 \
       -boot-info-table \
-      --grub2-boot-info \
     -eltorito-alt-boot \
-      -e EFI/efiboot.img \
+      -e boot/grub/efi.img \
       -no-emul-boot \
     -isohybrid-mbr ${HYBRID_MBR_PATH} \
-    -append_partition 2 0xef "${ISO_DIR}/EFI/efiboot.img" \
     -isohybrid-gpt-basdat \
     -output "${ISO_OUTPUT_PATH}" \
     "${ISO_DIR}"
 }
+    #-append_partition 2 0xef "${ISO_DIR}/EFI/efiboot.img" \
 
 # Create bootable ISO directory structure
 mkdir -p "${ISO_DIR}"/{boot/{isolinux,grub},EFI/boot,install,preseed,live}
@@ -87,10 +88,10 @@ if [ ! -f "${ISO_DIR}/live/vmlinuz" ] || \
     echo "Error: Live chroot files not found"
     exit 1
 fi
-if [ ! -f "${ISO_DIR}/install/filesystem.squashfs" ]; then
-    echo "Error: Target chroot filesystem not found"
-    exit 1
-fi
+#if [ ! -f "${ISO_DIR}/install/filesystem.squashfs" ]; then
+#    echo "Error: Target chroot filesystem not found"
+#    exit 1
+#fi
 if [ ! -f "${ISO_DIR}/boot/grub/grub.cfg" ]; then
     echo "Error: GRUB config not found"
     exit 1
