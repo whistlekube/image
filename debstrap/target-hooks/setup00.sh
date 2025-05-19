@@ -5,13 +5,13 @@ set -eux
 rootdir="$1"
 
 # Create EFI partition
-mkdir -p /output/efi
-dd if=/dev/zero of=/output/efi/EFI.img bs=1M count=100
-mkfs.vfat -F 32 /output/efi/EFI.img
+mkdir -p /output
+dd if=/dev/zero of=/output/efi.img bs=1M count=500
+mkfs.vfat -F 32 /output/efi.img
 
 # Mount EFI partition
-mkdir -p "$rootdir/boot/efi"
-mount /output/efi/EFI.img "$rootdir/boot/efi"
+mkdir -p "$rootdir/boot"
+mount -o loop /output/efi.img "$rootdir/boot"
 
 ## Create essential files
 #mkdir -p "$rootdir/bin"

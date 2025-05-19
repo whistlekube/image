@@ -4,5 +4,5 @@ set -eux
 
 rootdir="$1"
 
-# Install busybox to the target rootfs
-#chroot "$rootdir" /bin/busybox --install -s
+## mkdir -p "$rootdir/boot/loader"
+## rsync -a /config/boot/ "$rootdir/boot/loader"
