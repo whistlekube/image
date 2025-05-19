@@ -53,13 +53,14 @@ WORKDIR /build
 ENV ROOTFS_DIR="/rootfs"
 ENV MMDEBSTRAP_VARIANT="apt"
 #ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
-ENV MMDEBSTRAP_INCLUDE="zstd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,systemd-sysv,systemd-boot,live-boot"
+ENV MMDEBSTRAP_INCLUDE="zstd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,systemd-sysv,live-boot,live-config"
 COPY /boot/ /config/boot/
 COPY /debstrap/target-hooks/ /hooks/
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 
 RUN --security=insecure \
     echo "=== Building TARGET rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
+    mkdir -p ${OUTPUT_DIR} && \
     /scripts/build-rootfs.sh
 
 RUN echo "=== Squashing target filesystem ===" && \
@@ -108,29 +109,37 @@ rm -rf /var/lib/apt/lists/*
 EOFDOCKER
 
 # Make the EFI patition image
-COPY --from=targetfs-build ${OUTPUT_DIR}/efi.img target-efi.img
-COPY /boot/ ./boot/
+COPY /boot/grub/ ./boot/grub/
 RUN --security=insecure <<EOFDOCKER
 set -eux
 mkdir -p ${OUTPUT_DIR}
 # Mount the target EFI partition
-mkdir -p "${EFI_TARGET_MOUNT_POINT}"
-mount -o loop target-efi.img "${EFI_TARGET_MOUNT_POINT}"
+#mkdir -p "${EFI_TARGET_MOUNT_POINT}"
+#mount -o loop target-efi.img "${EFI_TARGET_MOUNT_POINT}"
 # Create a new EFI filesystem image
-dd if=/dev/zero of="${OUTPUT_DIR}/live-efi.img" bs=1M count=10
-mkfs.vfat -F 32 "${OUTPUT_DIR}/live-efi.img"
+dd if=/dev/zero of="${OUTPUT_DIR}/efi.img" bs=1M count=10
+mkfs.vfat -F 32 -n "EFIBOOT" "${OUTPUT_DIR}/efi.img"
 # Mount the EFI filesystem image
 mkdir -p "${EFI_MOUNT_POINT}"
-mount -o loop "${OUTPUT_DIR}/live-efi.img" "${EFI_MOUNT_POINT}"
+mount -o loop "${OUTPUT_DIR}/efi.img" "${EFI_MOUNT_POINT}"
 # Copy the EFI files to the EFI filesystem image
-cp -a ${EFI_TARGET_MOUNT_POINT}/EFI ${EFI_MOUNT_POINT}/EFI
-cp -a ./boot ${EFI_MOUNT_POINT}/loader
+grub-mkimage \
+    -O x86_64-efi \
+    -o "${EFI_MOUNT_POINT}/EFI/BOOT/BOOTX64.EFI" \
+    -p /boot/grub \
+    iso9660 normal configfile \
+    echo linux search search_label \
+    part_msdos part_gpt fat ext2 efi_gop efi_uga \
+    all_video font && \
+cp "./boot/grub/grub.cfg" "${EFI_MOUNT_POINT}/EFI/BOOT/grub.cfg"
+#cp -a ${EFI_TARGET_MOUNT_POINT}/EFI ${EFI_MOUNT_POINT}/EFI
+#cp -a ./boot ${EFI_MOUNT_POINT}/loader
 # Copy the kernel and initrd to the output directory
-cp -a ${EFI_TARGET_MOUNT_POINT}/vmlinuz-* ${OUTPUT_DIR}/vmlinuz
-cp -a ${EFI_TARGET_MOUNT_POINT}/initrd.img-* ${OUTPUT_DIR}/initrd.img
+#cp -a ${EFI_TARGET_MOUNT_POINT}/vmlinuz-* ${OUTPUT_DIR}/vmlinuz
+#cp -a ${EFI_TARGET_MOUNT_POINT}/initrd.img-* ${OUTPUT_DIR}/initrd.img
 # Unmount the EFI filesystem image
 umount "${EFI_MOUNT_POINT}"
-umount "${EFI_TARGET_MOUNT_POINT}"
+#umount "${EFI_TARGET_MOUNT_POINT}"
 EOFDOCKER
 
 FROM scratch AS efi-artifact
@@ -164,9 +173,8 @@ rm -rf /var/lib/apt/lists/*
 EOFDOCKER
 
 COPY --from=targetfs-build /output/rootfs.squashfs ${ISO_DIR}/live/filesystem.squashfs
-COPY --from=efi-build ${OUTPUT_DIR}/live-efi.img /efi.img
-COPY --from=efi-build ${OUTPUT_DIR}/vmlinuz ${ISO_DIR}/vmlinuz
-COPY --from=efi-build ${OUTPUT_DIR}/initrd.img ${ISO_DIR}/initrd.img
+COPY /boot/ ${ISO_DIR}/loader
+COPY --from=efi-build ${OUTPUT_DIR}/efi.img /efi.img
 RUN mkdir -p ${OUTPUT_DIR} && \
     xorriso \
     -as mkisofs \
@@ -175,12 +183,16 @@ RUN mkdir -p ${OUTPUT_DIR} && \
     --full-iso9660-filenames \
     -volid "${ISO_LABEL}" \
     -partition_offset 16 \
-    -append_partition 2 0xEF /efi.img \
+    -c boot.catalog \
+    -eltorito-alt-boot \
     -e --interval:appended_partition_2:all:: \
     -no-emul-boot \
+    -append_partition 2 0xEF /efi.img \
     -appended_part_as_gpt \
+    -no-emul-boot \
     -output ${OUTPUT_DIR}/${ISO_FILENAME} \
     ${ISO_DIR}
+
 
 ##    -eltorito-alt-boot \
 ##    -e /EFI/BOOT/BOOTX64.EFI \
