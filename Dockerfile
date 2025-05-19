@@ -45,10 +45,47 @@ apt-get clean
 rm -rf /var/lib/apt/lists/*
 EOFDOCKER
 
+# === Installer rootfs build ===
+# This stage builds the installer root filesystem
+FROM rootfs-builder AS installerfs-build
+WORKDIR /build
+ENV ROOTFS_DIR="/rootfs"
+ENV MMDEBSTRAP_VARIANT="apt"
+#ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
+ENV MMDEBSTRAP_INCLUDE="zstd,systemd-sysv,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,live-boot,live-config,live-config-systemd,dialog,squashfs-tools,parted,gdisk,e2fsprogs,lvm2,cryptsetup,dosfstools,ca-certificates"
+COPY /boot/ /config/boot/
+COPY /debstrap/installer-hooks/ /hooks/
+COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
+RUN --security=insecure \
+    echo "=== Building INSTALLER rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
+    /scripts/build-rootfs.sh
+COPY /overlays/live/ /rootfs/
+RUN --security=insecure \
+    echo "=== Configuring INSTALLER rootfs ===" && \
+    mount --bind /dev /rootfs/dev && \
+    mount --bind /proc /rootfs/proc && \
+    mount --bind /sys /rootfs/sys && \
+    mount --bind /run /rootfs/run && \
+    mount --bind /dev/pts /rootfs/dev/pts && \
+    mount --bind /dev/shm /rootfs/dev/shm && \
+    chroot /rootfs systemctl enable whistlekube-installer.service && \
+    umount /rootfs/dev/pts && \
+    umount /rootfs/dev/shm && \
+    umount /rootfs/dev && \
+    umount /rootfs/proc && \
+    umount /rootfs/sys && \
+    umount /rootfs/run
+RUN echo "=== Squashing INSTALLER filesystem ===" && \
+    mkdir -p ${OUTPUT_DIR} && \
+    mksquashfs /rootfs ${OUTPUT_DIR}/installer.squashfs -comp xz -no-xattrs -no-fragments -wildcards -b 1M
+
+# === Installer rootfs artifact ===
+FROM scratch AS installerfs-artifact
+COPY --from=installerfs-build /output/ /
+
 # === Target rootfs build ===
 # This stage builds the target root filesystem
 FROM rootfs-builder AS targetfs-build
-
 WORKDIR /build
 ENV ROOTFS_DIR="/rootfs"
 ENV MMDEBSTRAP_VARIANT="apt"
@@ -57,18 +94,16 @@ ENV MMDEBSTRAP_INCLUDE="zstd,linux-image-amd64,firmware-linux-free,firmware-linu
 COPY /boot/ /config/boot/
 COPY /debstrap/target-hooks/ /hooks/
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
-
 RUN --security=insecure \
     echo "=== Building TARGET rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
     mkdir -p ${OUTPUT_DIR} && \
     /scripts/build-rootfs.sh
-
-RUN echo "=== Squashing target filesystem ===" && \
+RUN echo "=== Squashing TARGET filesystem ===" && \
     mkdir -p ${OUTPUT_DIR} && \
     mksquashfs /rootfs ${OUTPUT_DIR}/rootfs.squashfs -comp xz -no-xattrs -no-fragments -wildcards -b 1M
 
+# === Target rootfs artifact ===
 FROM scratch AS targetfs-artifact
-
 COPY --from=targetfs-build /output/ /
 
 ## FROM rootfs-builder AS boot-builder
@@ -181,7 +216,8 @@ apt-get clean
 rm -rf /var/lib/apt/lists/*
 EOFDOCKER
 
-COPY --from=targetfs-build /output/rootfs.squashfs ${ISO_DIR}/live/filesystem.squashfs
+COPY --from=installerfs-build /output/installer.squashfs ${ISO_DIR}/live/filesystem.squashfs
+COPY --from=targetfs-build /output/rootfs.squashfs ${ISO_DIR}/install/filesystem.squashfs
 COPY --from=targetfs-build /output/vmlinuz ${ISO_DIR}/live/vmlinuz
 COPY --from=targetfs-build /output/initrd.img ${ISO_DIR}/live/initrd.img
 COPY /boot/grub/grub.cfg ${ISO_DIR}/boot/grub/grub.cfg

@@ -110,7 +110,10 @@ extract_rootfs() {
     mkdir -p "$TARGET_MNT"
 
     # Extract the squashfs to the target
-    unsquashfs -f -d "$TARGET_MNT" "$TARGET_SQUASHFS"
+    #unsquashfs -f -d "$TARGET_MNT" "$TARGET_SQUASHFS"
+
+    # Copy the rootfs to the target
+    cp -a "$TARGET_SQUASHFS" "$TARGET_MNT"
 
     echo -e "${GREEN}Root filesystem extracted!${NC}"
     sleep 1
@@ -323,12 +326,21 @@ main() {
         exit 1
     fi
 
-    extract_rootfs
+    # Copy live files to target
+    mkdir -p "${TARGET_MNT}/live"
+    cp /run/live/medium/install/filesystem.squashfs "${TARGET_MNT}/live/filesystem.squashfs"
+    cp /run/live/medium/live/vmlinuz "${TARGET_MNT}/live/vmlinuz"
+    cp /run/live/medium/live/initrd.img "${TARGET_MNT}/live/initrd.img"
+
+    
+
+    /bin/bash
+    #extract_rootfs
     #mount_target "$disk"
     #install_system
-    configure_system
-    install_bootloader "$disk"
-    finish_installation
+    #configure_system
+    #install_bootloader "$disk"
+    #finish_installation
 
     # Unmount target
     #umount -R "$TARGET_MOUNT"

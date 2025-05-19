@@ -76,7 +76,6 @@ build_iso() {
     -output "${ISO_OUTPUT_PATH}" \
     "${ISO_DIR}"
 }
-    #-append_partition 2 0xef "${ISO_DIR}/EFI/efiboot.img" \
 
 # Create bootable ISO directory structure
 mkdir -p "${ISO_DIR}"/{boot/{isolinux,grub},EFI/boot,install,preseed,live}
