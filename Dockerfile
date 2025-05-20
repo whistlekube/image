@@ -44,7 +44,12 @@ ENV ROOTFS_DIR="/rootfs"
 # This stage builds the installer root filesystem
 FROM rootfs-builder AS installer-debstrap
 ENV MMDEBSTRAP_VARIANT="essential"
-ENV MMDEBSTRAP_INCLUDE="zstd,live-boot,live-config-systemd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,systemd-sysv,dialog,squashfs-tools,parted,gdisk,e2fsprogs,lvm2,cryptsetup,dosfstools,ca-certificates"
+ENV MMDEBSTRAP_INCLUDE="\
+    zstd,live-boot,live-config-systemd,\
+    linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,\
+    systemd-sysv,dialog,squashfs-tools,parted,gdisk,e2fsprogs,\
+    lvm2,cryptsetup,dosfstools,ca-certificates,\
+    grub-common,grub-efi-amd64-bin,grub-efi-amd64-signed,grub-pc-bin"
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \
     echo "=== Building INSTALLER rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
@@ -85,7 +90,7 @@ WORKDIR /build
 ENV ROOTFS_DIR="/rootfs"
 ENV MMDEBSTRAP_VARIANT="apt"
 #ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
-ENV MMDEBSTRAP_INCLUDE="systemd-sysv"
+ENV MMDEBSTRAP_INCLUDE="zstd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,systemd-sysv"
 #COPY /boot/ /config/boot/
 COPY /debstrap/target-hooks/ /hooks/
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
@@ -143,7 +148,7 @@ rm -rf /var/lib/apt/lists/*
 EOFDOCKER
 
 # Make the EFI patition image
-COPY /installer/grub.cfg /boot/grub/grub.cfg
+COPY /installer/grub.cfg /config/grub.cfg
 #COPY /boot/loader/ /efi/loader/
 #COPY --from=installerfs-build /rootfs/usr/lib/systemd/boot/efi/systemd-bootx64.efi /efi/EFI/BOOT/BOOTX64.EFI
 #COPY --from=installerfs-build /rootfs/usr/lib/systemd/boot/efi/systemd-bootx64.efi /efi/EFI/systemd/systemd-bootx64.efi
@@ -156,19 +161,20 @@ mkdir -p "${EFI_MOUNT_POINT}"
 mkfs.fat -F 12 -n "UEFI_BOOT" "${OUTPUT_DIR}/efi.img"
 # Mount the EFI filesystem image
 mount -o loop "${OUTPUT_DIR}/efi.img" "${EFI_MOUNT_POINT}"
-mkdir -p "${EFI_MOUNT_POINT}/EFI/BOOT"
 #cp -r /efi/* "${EFI_MOUNT_POINT}"
 #find "${EFI_MOUNT_POINT}"
 # Copy the EFI files to the EFI filesystem image
 grub-mkstandalone \
     -O x86_64-efi \
-    -o "${EFI_MOUNT_POINT}/EFI/BOOT/BOOTX64.EFI" \
+    -o "${OUTPUT_DIR}/grub.efi" \
     --modules "iso9660 normal configfile echo linux search search_label part_msdos part_gpt fat ext2 efi_gop efi_uga all_video font" \
     --locales "" \
     --themes "" \
-    "boot/grub/grub.cfg=/boot/grub/grub.cfg"
+    "/boot/grub/grub.cfg=/config/grub.cfg"
+# Copy the grub.efi to the EFI filesystem image
+mkdir -p "${EFI_MOUNT_POINT}/EFI/BOOT"
+cp "${OUTPUT_DIR}/grub.efi" "${EFI_MOUNT_POINT}/EFI/BOOT/BOOTX64.EFI"
 # Unmount the EFI filesystem image
-#cp /config/boot/grub/grub.cfg "${EFI_MOUNT_POINT}/EFI/BOOT/grub.cfg"
 umount "${EFI_MOUNT_POINT}"
 
 # Make grub core image
@@ -222,10 +228,10 @@ COPY --from=targetfs-build ${OUTPUT_DIR}/rootfs.squashfs ${ISO_DIR}/install/file
 COPY /installer/grub.cfg ${ISO_DIR}/boot/grub/grub.cfg
 COPY --from=efi-build ${OUTPUT_DIR}/efi.img ${ISO_DIR}/boot/grub/efi.img
 COPY --from=efi-build ${OUTPUT_DIR}/core.img ${ISO_DIR}/boot/grub/core.img
+COPY --from=efi-build ${OUTPUT_DIR}/grub.efi ${ISO_DIR}/EFI/BOOT/BOOTX64.EFI
 COPY /scripts/build-iso.sh /scripts/build-iso.sh
 
 RUN --security=insecure \
-    mkdir -p ${ISO_DIR}/EFI/boot && \
     mkdir -p ${OUTPUT_DIR} && \
     xorriso \
       -as mkisofs \

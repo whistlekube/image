@@ -54,27 +54,6 @@ build_iso() {
   echo "Creating bootable ISO..."
   mkdir -p "${OUTPUT_DIR}"
   find "${ISO_DIR}"
-  xorriso \
-    -as mkisofs \
-    -iso-level 3 \
-    -rock --joliet --joliet-long \
-    -full-iso9660-filenames \
-    -volid "${ISO_LABEL}" \
-    -appid "${ISO_APPID}" \
-    -publisher "${ISO_PUBLISHER}" \
-    -preparer "${ISO_PREPARER}" \
-    -c boot.catalog \
-    -eltorito-boot boot/grub/core.img \
-      -no-emul-boot \
-      -boot-load-size 4 \
-      -boot-info-table \
-    -eltorito-alt-boot \
-      -e boot/grub/efi.img \
-      -no-emul-boot \
-    -isohybrid-mbr ${HYBRID_MBR_PATH} \
-    -isohybrid-gpt-basdat \
-    -output "${ISO_OUTPUT_PATH}" \
-    "${ISO_DIR}"
 }
 
 # Create bootable ISO directory structure

@@ -11,5 +11,7 @@ set -euxo pipefail
 
 rm -f ${rootfs}/boot/*
 
+echo "TTYPath=/dev/tty4" >> ${rootfs}/etc/systemd/journald.conf
+
 systemctl enable whistlekube-installer.service
 

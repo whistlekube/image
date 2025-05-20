@@ -185,13 +185,14 @@ qemu-init:
 
 # Run a QEMU instance booting from the installer ISO (BIOS)
 qemu-iso-bios:
-	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio -boot d -cdrom $(OUTPUT_DIR)/$(ISO_FILENAME)
+	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio -cdrom $(OUTPUT_DIR)/$(ISO_FILENAME) -boot d
 
 # Run a QEMU instance booting from the installer ISO (UEFI)
 qemu-iso: qemu-iso-uefi
 qemu-iso-uefi:
 	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio \
-		-boot d -cdrom $(OUTPUT_DIR)/$(ISO_FILENAME) \
+		-cdrom $(OUTPUT_DIR)/$(ISO_FILENAME) \
+		-boot d \
 		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE_PATH) \
 		-drive if=pflash,format=raw,file=$(OUTPUT_DIR)/OVMF_VARS.fd
 

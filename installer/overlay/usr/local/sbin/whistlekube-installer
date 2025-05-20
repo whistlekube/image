@@ -33,6 +33,34 @@ is_uefi() {
     fi
 }
 
+efi_part() {
+    local disk="$1"
+
+    if [[ "$disk" == *nvme* ]]; then
+        echo "${disk}p1"
+    else
+        echo "${disk}1"
+    fi
+}
+
+target_part() {
+    local disk="$1"
+
+    if [[ "$disk" == *nvme* ]]; then
+        if is_uefi; then
+            echo "${disk}p2"
+        else
+            echo "${disk}p1"
+        fi
+    else
+        if is_uefi; then
+            echo "${disk}2"
+        else
+            echo "${disk}1"
+        fi
+    fi
+}
+
 # Function to partition disk
 partition_disk() {
     local disk="$1"
@@ -45,10 +73,11 @@ partition_disk() {
 
     # Create partitions
     if is_uefi; then
+        local esp_end=60MiB
         parted -s "$disk" mklabel gpt
-        parted -s "$disk" mkpart primary fat32 1MiB 513MiB
+        parted -s "$disk" mkpart primary fat32 1MiB $esp_end
         parted -s "$disk" set 1 esp on
-        parted -s "$disk" mkpart primary ext4 513MiB 100%
+        parted -s "$disk" mkpart primary ext4 $esp_end 100%
     else
         parted -s "$disk" mklabel msdos
         parted -s "$disk" mkpart primary ext4 1MiB 100%
@@ -58,45 +87,30 @@ partition_disk() {
     # Wait for udev to settle and recognize the new partitions
     sleep 2
     udevadm settle
-    
+
     # Determine the device names for the partitions
-    if [[ "$disk" == *nvme* ]]; then
-        # NVMe devices use "p" suffix for partitions (e.g., /dev/nvme0n1p1)
-        if is_uefi; then
-            efi_part="${disk}p1"
-            root_part="${disk}p2"
-        else
-            root_part="${disk}p1"
-        fi
-    else
-        # SATA/IDE devices add partition number (e.g., /dev/sda1)
-        if is_uefi; then
-            efi_part="${disk}1"
-            root_part="${disk}2"
-        else
-            root_part="${disk}1"
-        fi
-    fi
+    local efi_dev=$(efi_part "$disk")
+    local target_dev=$(target_part "$disk")
 
     # Format the partitions
     if is_uefi; then
-        mkfs.fat -F32 "$efi_part"
-        echo "EFI partition formatted: $efi_part"
+        mkfs.fat -F32 "$efi_dev"
+        echo "EFI partition formatted: $efi_dev"
     fi
 
-    mkfs.ext4 -F "$root_part"
-    echo "Root partition formatted: $root_part"
+    mkfs.ext4 -F "$target_dev"
+    echo "Root partition formatted: $target_dev"
 
     # Create mount points
     mkdir -p "$TARGET_MNT"
 
     # Mount root partition
-    mount "$root_part" "$TARGET_MNT"
+    mount "$target_dev" "$TARGET_MNT"
 
     # Mount EFI partition if UEFI
     if is_uefi; then
         mkdir -p "$EFI_MNT"
-        mount "$efi_part" "$EFI_MNT"
+        mount "$efi_dev" "$EFI_MNT"
     fi
 
     return 0
@@ -332,9 +346,86 @@ main() {
     cp /run/live/medium/live/vmlinuz "${TARGET_MNT}/live/vmlinuz"
     cp /run/live/medium/live/initrd.img "${TARGET_MNT}/live/initrd.img"
 
+    local target_dev=$(target_part "$disk")
+
+    # Copy grub.cfg to boot partition
+    mkdir -p "${TARGET_MNT}/boot/grub"
+    cat <<EOF > "${TARGET_MNT}/boot/grub/grub.cfg"
+set timeout=30
+set default="0"
+
+menuentry "Whistlekube Linux" {
+    search --fs-uuid --set=root $(blkid -s UUID -o value "$target_dev")
+    echo "Loading whistlekube kernel..."
+    linux /live/vmlinuz boot=live components quiet
+    echo "Loading whistlekube initrd..."
+    initrd /live/initrd.img
+}
+
+menuentry "Whistlekube Linux (recovery mode)" {
+    search --fs-uuid --set=root $(blkid -s UUID -o value "$target_dev")
+    echo "Loading kernel (recovery mode)..."
+    linux /live/vmlinuz boot=live components nomodeset \
+        noapic noapm nodma nomce nolapic \
+        debug # Useful for troubleshooting live-boot
+    echo "Loading initial ramdisk (recovery mode)..."
+    initrd /live/initrd.img
+}
+EOF
+
+    echo "*************************** grub.cfg ***************************"
+    cat "${TARGET_MNT}/boot/grub/grub.cfg"
+    echo "*************************** grub.cfg ***************************"
+
+    # Make the bootloader
+    if is_uefi; then
+        local tmp_grub_cfg="/tmp/grub.cfg"
+        cat <<EOF > ${tmp_grub_cfg}
+search --fs-uuid --set=root $(blkid -s UUID -o value "$target_dev")
+set prefix=($root)/boot/grub
+# Try to load the full config
+if [ -f ${prefix}/grub.cfg ]; then
+  configfile ${prefix}/grub.cfg
+else
+  # Emergency fallback if main config is missing
+  echo "Main configuration not found. Loading emergency options."
+
+  # A very basic fallback entry
+  menuentry "Emergency Boot" {
+    search --fs-uuid --set=root $(blkid -s UUID -o value "$target_dev")
+    linux /boot/vmlinuz-fallback root=UUID=$(blkid -s UUID -o value "$target_dev") ro single
+    initrd /boot/initrd-fallback.img
+  }
+fi
+EOF
+        # EFI partition contains a minimal grub that just loads the grub from the root partition
+        mkdir -p "${EFI_MNT}/EFI/BOOT"
+        grub-mkstandalone \
+            -O x86_64-efi \
+            -o "${EFI_MNT}/EFI/BOOT/BOOTX64.EFI" \
+            --modules "normal configfile echo linux search search_fs_uuid part_msdos part_gpt fat ext2 efi_gop efi_uga" \
+            --locales "" \
+            --themes "" \
+            "boot/grub/grub.cfg=${TARGET_MNT}/boot/grub/grub.cfg"
+    else
+        grub-mkimage \
+            -O i386-pc-eltorito \
+            -o "${TARGET_MNT}/boot/grub/core.img" \
+            -p /boot/grub \
+            biosdisk \
+            normal configfile \
+            echo linux search search_fs_uuid \
+            part_msdos part_gpt fat ext2
+    fi
     
 
-    /bin/bash
+    echo "Waiting for 5 seconds..."
+    sleep 5
+
+    # Unmount filesystems
+    finish_installation
+
+    #/bin/bash
     #extract_rootfs
     #mount_target "$disk"
     #install_system
