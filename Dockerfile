@@ -212,6 +212,7 @@ ARG ISO_PREPARER="Built with xorriso"
 ENV ISO_DIR="/iso"
 ENV REPO_BINARY_DIR="${ISO_DIR}/pool/main/binary-${DEBIAN_ARCH}"
 ENV REPO_DIST_DIR="${ISO_DIR}/dists/${DEBIAN_RELEASE}/main/binary-${DEBIAN_ARCH}"
+ENV HYBRID_MBR_PATH="/usr/lib/grub/i386-pc/boot_hybrid.img"
 
 COPY --from=installer-build ${OUTPUT_DIR}/vmlinuz ${ISO_DIR}/live/vmlinuz
 COPY --from=installer-build ${OUTPUT_DIR}/initrd.img ${ISO_DIR}/live/initrd.img
@@ -225,7 +226,28 @@ COPY /scripts/build-iso.sh /scripts/build-iso.sh
 
 RUN --security=insecure \
     mkdir -p ${ISO_DIR}/EFI/boot && \
-    /scripts/build-iso.sh
+    mkdir -p ${OUTPUT_DIR} && \
+    xorriso \
+      -as mkisofs \
+      -iso-level 3 \
+      -rock --joliet --joliet-long \
+      -full-iso9660-filenames \
+      -volid "${ISO_LABEL}" \
+      -appid "${ISO_APPID}" \
+      -publisher "${ISO_PUBLISHER}" \
+      -preparer "${ISO_PREPARER}" \
+      -c boot.catalog \
+      -eltorito-boot boot/grub/core.img \
+        -no-emul-boot \
+        -boot-load-size 4 \
+        -boot-info-table \
+      -eltorito-alt-boot \
+        -e boot/grub/efi.img \
+        -no-emul-boot \
+      -isohybrid-mbr ${HYBRID_MBR_PATH} \
+      -isohybrid-gpt-basdat \
+      -output "${OUTPUT_DIR}/${ISO_FILENAME}" \
+      "${ISO_DIR}"
 
 ## RUN mkdir -p ${OUTPUT_DIR} && \
 ##     xorriso \
