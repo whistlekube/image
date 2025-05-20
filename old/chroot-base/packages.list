@@ -1,7 +1,0 @@
-zstd
-linux-image-amd64
-systemd-sysv
-locales
-tzdata
-passwd
-ca-certificates

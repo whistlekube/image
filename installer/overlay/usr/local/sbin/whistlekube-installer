@@ -382,7 +382,7 @@ EOF
         local tmp_grub_cfg="/tmp/grub.cfg"
         cat <<EOF > ${tmp_grub_cfg}
 search --fs-uuid --set=root $(blkid -s UUID -o value "$target_dev")
-set prefix=($root)/boot/grub
+set prefix=(\$root)/boot/grub
 # Try to load the full config
 if [ -f ${prefix}/grub.cfg ]; then
   configfile ${prefix}/grub.cfg
@@ -406,7 +406,7 @@ EOF
             --modules "normal configfile echo linux search search_fs_uuid part_msdos part_gpt fat ext2 efi_gop efi_uga" \
             --locales "" \
             --themes "" \
-            "boot/grub/grub.cfg=${TARGET_MNT}/boot/grub/grub.cfg"
+            "boot/grub/grub.cfg=${tmp_grub_cfg}"
     else
         grub-mkimage \
             -O i386-pc-eltorito \
@@ -418,9 +418,6 @@ EOF
             part_msdos part_gpt fat ext2
     fi
     
-
-    echo "Waiting for 5 seconds..."
-    sleep 5
 
     # Unmount filesystems
     finish_installation

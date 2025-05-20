@@ -1,4 +1,0 @@
-# Custom live-boot configuration
-LIVE_USERNAME="root"
-LIVE_USER_FULLNAME="Installer"
-LIVE_HOSTNAME="whistlekube-installer"

@@ -6,6 +6,8 @@ ARG BUILD_VERSION="UNKNOWNVERSION"
 ARG DEBIAN_MIRROR="http://deb.debian.org/debian"
 ARG ISO_FILENAME="whistlekube-installer-${BUILD_VERSION}.iso"
 ARG OUTPUT_DIR="/output"
+ARG K3S_VERSION="v1.33.0+k3s1"
+
 
 # === Base builder ===
 FROM debian:${DEBIAN_RELEASE}-slim AS base-builder
@@ -21,6 +23,24 @@ ARG TARGETARCH
 ENV DEBIAN_ARCH="${TARGETARCH}"
 ENV DEBIAN_FRONTEND=noninteractive
 ENV DEBCONF_NONINTERACTIVE_SEEN=true
+
+# === Download k3s ===
+FROM base-builder AS k3s-download
+
+ARG K3S_VERSION
+ARG DEBIAN_ARCH
+
+# Install curl
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl openssl ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p ${OUTPUT_DIR} && \
+    curl -fSL -o ${OUTPUT_DIR}/k3s "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s" && \
+    curl -fSL -o ${OUTPUT_DIR}/k3s-airgap-images-${DEBIAN_ARCH}.tar.gz \
+    "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-${DEBIAN_ARCH}.tar.gz" && \
+    chmod +x ${OUTPUT_DIR}/k3s
 
 # === Base rootfs builder with tools installed ===
 # This stage builds the base chroot environment that is used for both the target and live root filesystems
@@ -60,17 +80,17 @@ RUN --security=insecure \
 
 # === Configure the installer rootfs ===
 FROM installer-debstrap AS installer-configure
-COPY /installer/overlay/ /rootfs/
-COPY /installer/configure-chroot.sh /rootfs/configure-chroot.sh
+COPY /installer/overlay/ ${ROOTFS_DIR}/
+COPY /installer/configure-chroot.sh ${ROOTFS_DIR}/configure-chroot.sh
 COPY /scripts/mount-chroot.sh /scripts/mount-chroot.sh
 COPY /scripts/umount-chroot.sh /scripts/umount-chroot.sh
 RUN --security=insecure <<EOFDOCKER
 set -eux
 echo "=== Configuring INSTALLER rootfs ==="
 /scripts/mount-chroot.sh
-chroot /rootfs /configure-chroot.sh
+chroot ${ROOTFS_DIR} /configure-chroot.sh
 /scripts/umount-chroot.sh
-rm -f /rootfs/configure-chroot.sh
+rm -f ${ROOTFS_DIR}/configure-chroot.sh
 EOFDOCKER
 
 # === Build the installer squashfs ===
@@ -85,26 +105,44 @@ COPY --from=installer-build /output/ /
 
 # === Target rootfs build ===
 # This stage builds the target root filesystem
-FROM rootfs-builder AS targetfs-build
+FROM rootfs-builder AS target-debstrap
 WORKDIR /build
 ENV ROOTFS_DIR="/rootfs"
 ENV MMDEBSTRAP_VARIANT="apt"
 #ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
-ENV MMDEBSTRAP_INCLUDE="zstd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,systemd-sysv"
+ENV MMDEBSTRAP_INCLUDE="zstd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,systemd-sysv,passwd"
 #COPY /boot/ /config/boot/
-COPY /debstrap/target-hooks/ /hooks/
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \
     echo "=== Building TARGET rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
     mkdir -p ${OUTPUT_DIR} && \
     /scripts/build-rootfs.sh
+
+# === Configure the target rootfs ===
+FROM target-debstrap AS target-configure
+COPY /target/overlay/ ${ROOTFS_DIR}/
+COPY --from=k3s-download ${OUTPUT_DIR}/k3s ${ROOTFS_DIR}/usr/local/bin/k3s
+COPY /target/configure-chroot.sh ${ROOTFS_DIR}/configure-chroot.sh
+COPY /scripts/mount-chroot.sh /scripts/mount-chroot.sh
+COPY /scripts/umount-chroot.sh /scripts/umount-chroot.sh
+RUN --security=insecure <<EOFDOCKER
+set -eux
+echo "=== Configuring TARGET rootfs ==="
+/scripts/mount-chroot.sh
+chroot ${ROOTFS_DIR} /configure-chroot.sh
+/scripts/umount-chroot.sh
+rm -f ${ROOTFS_DIR}/configure-chroot.sh
+EOFDOCKER
+
+# === Build the target squashfs ===
+FROM target-configure AS target-build
 RUN echo "=== Squashing TARGET filesystem ===" && \
     mkdir -p ${OUTPUT_DIR} && \
     mksquashfs /rootfs ${OUTPUT_DIR}/rootfs.squashfs -comp zstd -no-xattrs -no-fragments -wildcards -b 1M
 
 # === Target rootfs artifact ===
-FROM scratch AS targetfs-artifact
-COPY --from=targetfs-build /output/ /
+FROM scratch AS target-artifact
+COPY --from=target-build /output/ /
 
 ## FROM rootfs-builder AS boot-builder
 ## 
@@ -223,7 +261,7 @@ ENV HYBRID_MBR_PATH="/usr/lib/grub/i386-pc/boot_hybrid.img"
 COPY --from=installer-build ${OUTPUT_DIR}/vmlinuz ${ISO_DIR}/live/vmlinuz
 COPY --from=installer-build ${OUTPUT_DIR}/initrd.img ${ISO_DIR}/live/initrd.img
 COPY --from=installer-build ${OUTPUT_DIR}/installer.squashfs ${ISO_DIR}/live/filesystem.squashfs
-COPY --from=targetfs-build ${OUTPUT_DIR}/rootfs.squashfs ${ISO_DIR}/install/filesystem.squashfs
+COPY --from=target-build ${OUTPUT_DIR}/rootfs.squashfs ${ISO_DIR}/install/filesystem.squashfs
 #COPY --from=initrd-build /initrd-live.img ${ISO_DIR}/live/initrd.img
 COPY /installer/grub.cfg ${ISO_DIR}/boot/grub/grub.cfg
 COPY --from=efi-build ${OUTPUT_DIR}/efi.img ${ISO_DIR}/boot/grub/efi.img

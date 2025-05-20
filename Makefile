@@ -40,7 +40,9 @@ ISO_FILENAME ?= whistlekube-installer-${BUILD_VERSION}.iso
 # The docker target to build
 BUILD_TARGET ?= $(ARTIFACT_BUILD_TARGET)
 # The name of the Docker image to build
-DOCKER_IMAGE_NAME ?= whistlekube-installer-${BUILD_TARGET}
+DOCKER_IMAGE_PREFIX ?= whistlekube-installer
+DOCKER_IMAGE_NAME ?= ${DOCKER_IMAGE_PREFIX}-${BUILD_TARGET}
+DOCKER_BUILDER_NAME ?= ${DOCKER_IMAGE_PREFIX}-builder
 # The name of the QEMU image to build
 QEMU_IMAGE_NAME ?= whistlekube-disk
 QEMU_IMAGE_PATH ?= $(OUTPUT_DIR)/$(QEMU_IMAGE_NAME).qcow2
@@ -95,8 +97,10 @@ help:
 
 # Create a new buildx builder with insecure options
 init:
+	@echo "Removing existing buildx builder..."
+	@docker buildx rm $(DOCKER_BUILDER_NAME) || true
 	@echo "Creating new buildx builder with insecure options..."
-	@docker buildx create --use --driver=docker-container --buildkitd-flags "--allow-insecure-entitlement security.insecure"
+	@docker buildx create --use --driver=docker-container --buildkitd-flags "--allow-insecure-entitlement security.insecure" --name $(DOCKER_BUILDER_NAME)
 	@echo "Bootstrapping buildx builder..."
 	@docker buildx inspect --bootstrap
 	@docker buildx ls
@@ -146,7 +150,7 @@ iso:
 clean:
 	@echo "Cleaning up..."
 	@rm -rf $(OUTPUT_DIR)
-	@docker rm -f $(DOCKER_IMAGE_NAME) || true
+	@docker rm -f $(DOCKER_IMAGE_PREFIX)* || true
 	@docker rmi -f $(DOCKER_IMAGE_NAME) || true
 	@docker system prune -a -f --volumes || true
 	@docker buildx prune -f --all || true
