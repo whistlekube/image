@@ -357,7 +357,7 @@ set default="0"
 menuentry "Whistlekube Linux" {
     search --fs-uuid --set=root $(blkid -s UUID -o value "$target_dev")
     echo "Loading whistlekube kernel..."
-    linux /live/vmlinuz boot=live components quiet
+    linux /live/vmlinuz boot=live components nomodeset
     echo "Loading whistlekube initrd..."
     initrd /live/initrd.img
 }

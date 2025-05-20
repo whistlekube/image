@@ -1,0 +1,6 @@
+# Server configuration
+write-kubeconfig-mode: "0644"
+tls-san:
+  - server-hostname-or-ip
+# For airgap installation
+disable-cloud-controller: true

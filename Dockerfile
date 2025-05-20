@@ -65,9 +65,10 @@ ENV ROOTFS_DIR="/rootfs"
 FROM rootfs-builder AS installer-debstrap
 ENV MMDEBSTRAP_VARIANT="essential"
 ENV MMDEBSTRAP_INCLUDE="\
-    zstd,live-boot,live-config-systemd,\
+    zstd,live-boot,live-config,\
     linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,\
-    systemd-sysv,bash,coreutils,dialog,squashfs-tools,parted,gdisk,e2fsprogs,\
+    systemd-sysv,bash,coreutils,\
+    dialog,squashfs-tools,parted,gdisk,e2fsprogs,\
     lvm2,cryptsetup,dosfstools,ca-certificates,\
     grub-common,grub-efi-amd64-bin,grub-efi-amd64-signed,grub-pc-bin"
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
@@ -81,6 +82,8 @@ RUN --security=insecure \
 # === Configure the installer rootfs ===
 FROM installer-debstrap AS installer-configure
 COPY /installer/overlay/ ${ROOTFS_DIR}/
+COPY /installer/src/bin/ ${ROOTFS_DIR}/usr/local/sbin/
+COPY /installer/src/lib/ ${ROOTFS_DIR}/usr/local/lib/
 COPY /installer/configure-chroot.sh ${ROOTFS_DIR}/configure-chroot.sh
 COPY /scripts/mount-chroot.sh /scripts/mount-chroot.sh
 COPY /scripts/umount-chroot.sh /scripts/umount-chroot.sh
@@ -97,7 +100,9 @@ EOFDOCKER
 FROM installer-configure AS installer-build
 RUN echo "=== Squashing INSTALLER filesystem ===" && \
     mkdir -p ${OUTPUT_DIR} && \
-    mksquashfs /rootfs ${OUTPUT_DIR}/installer.squashfs -comp zstd -no-xattrs -no-fragments -wildcards -b 1M
+    mksquashfs /rootfs ${OUTPUT_DIR}/installer.squashfs -comp zstd -no-xattrs -no-fragments -wildcards -b 1M && \
+    echo "=== Built INSTALLER filesystem ===" && \
+    ls -lh ${OUTPUT_DIR}
 
 # === Installer rootfs artifact ===
 FROM scratch AS installer-artifact
@@ -111,7 +116,8 @@ ENV ROOTFS_DIR="/rootfs"
 ENV MMDEBSTRAP_VARIANT="apt"
 #ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
 ENV MMDEBSTRAP_INCLUDE="zstd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,\
-    systemd-sysv,passwd,util-linux,coreutils,dbus,libpam-systemd,login,bash,ca-certificates"
+    systemd-sysv,passwd,util-linux,coreutils,bash,login,dbus,ca-certificates,\
+    iproute2,procps,less,vim-tiny,containernetworking-plugins"
 #COPY /boot/ /config/boot/
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \
@@ -123,6 +129,7 @@ RUN --security=insecure \
 FROM target-debstrap AS target-configure
 COPY /target/overlay/ ${ROOTFS_DIR}/
 COPY --from=k3s-download ${OUTPUT_DIR}/k3s ${ROOTFS_DIR}/usr/local/bin/k3s
+COPY --from=k3s-download ${OUTPUT_DIR}/k3s-airgap-images-${DEBIAN_ARCH}.tar.gz ${ROOTFS_DIR}/var/lib/rancher/k3s/agent/images/
 COPY /target/configure-chroot.sh ${ROOTFS_DIR}/configure-chroot.sh
 COPY /scripts/mount-chroot.sh /scripts/mount-chroot.sh
 COPY /scripts/umount-chroot.sh /scripts/umount-chroot.sh
@@ -139,7 +146,9 @@ EOFDOCKER
 FROM target-configure AS target-build
 RUN echo "=== Squashing TARGET filesystem ===" && \
     mkdir -p ${OUTPUT_DIR} && \
-    mksquashfs /rootfs ${OUTPUT_DIR}/rootfs.squashfs -comp zstd -no-xattrs -no-fragments -wildcards -b 1M
+    mksquashfs /rootfs ${OUTPUT_DIR}/rootfs.squashfs -comp zstd -no-xattrs -no-fragments -wildcards -b 1M && \
+    echo "=== Built TARGET filesystem ===" && \
+    ls -lh ${OUTPUT_DIR}
 
 # === Target rootfs artifact ===
 FROM scratch AS target-artifact
@@ -268,7 +277,7 @@ COPY /installer/grub.cfg ${ISO_DIR}/boot/grub/grub.cfg
 COPY --from=efi-build ${OUTPUT_DIR}/efi.img ${ISO_DIR}/boot/grub/efi.img
 COPY --from=efi-build ${OUTPUT_DIR}/core.img ${ISO_DIR}/boot/grub/core.img
 COPY --from=efi-build ${OUTPUT_DIR}/grub.efi ${ISO_DIR}/EFI/BOOT/BOOTX64.EFI
-COPY /scripts/build-iso.sh /scripts/build-iso.sh
+#COPY /scripts/build-iso.sh /scripts/build-iso.sh
 
 RUN --security=insecure \
     mkdir -p ${OUTPUT_DIR} && \
@@ -293,42 +302,6 @@ RUN --security=insecure \
       -isohybrid-gpt-basdat \
       -output "${OUTPUT_DIR}/${ISO_FILENAME}" \
       "${ISO_DIR}"
-
-## RUN mkdir -p ${OUTPUT_DIR} && \
-##     xorriso \
-##     -as mkisofs \
-##     -iso-level 3 \
-##     -rock --joliet --joliet-long \
-##     --full-iso9660-filenames \
-##     -volid "${ISO_LABEL}" \
-##     -eltorito-boot boot/grub/core.img \
-##       -no-emul-boot \
-##       -boot-load-size 4 \
-##       -boot-info-table \
-##       --grub2-boot-info \
-##     -eltorito-alt-boot \
-##       -e EFI/efiboot.img \
-##       -no-emul-boot \
-##     -append_partition 2 0xef ${ISO_DIR}/EFI/efiboot.img \
-##     -isohybrid-mbr ${HYBRID_MBR_PATH} \
-##     -isohybrid-gpt-basdat \
-##     -output ${OUTPUT_DIR}/${ISO_FILENAME} \
-##     ${ISO_DIR}
-
-##    -partition_offset 16 \
-##    -c boot.catalog \
-##    -eltorito-alt-boot \
-##    -e --interval:appended_partition_2:all:: \
-##    -no-emul-boot \
-##    -append_partition 2 0xEF /efi.img \
-##    -appended_part_as_gpt \
-##    -isohybrid-gpt-basdat \
-
-##    -eltorito-alt-boot \
-##    -e /EFI/BOOT/BOOTX64.EFI \
-##    -no-emul-boot \
-##    -boot-load-size 4 \
-##    -boot-info-table \
 
 # === Artifact ===
 # This stage builds the final artifact container

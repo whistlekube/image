@@ -187,6 +187,10 @@ qemu-init:
 	qemu-img create -f qcow2 $(QEMU_IMAGE_PATH) $(QEMU_IMAGE_SIZE)
 	cp $(OVMF_VARS_PATH) $(OUTPUT_DIR)/OVMF_VARS.fd
 
+# Partitions the disk and runs the whistlekube installer
+qemu-install:
+	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio -cdrom $(OUTPUT_DIR)/$(ISO_FILENAME) -boot d
+
 # Run a QEMU instance booting from the installer ISO (BIOS)
 qemu-iso-bios:
 	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio -cdrom $(OUTPUT_DIR)/$(ISO_FILENAME) -boot d
