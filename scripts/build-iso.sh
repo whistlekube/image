@@ -53,6 +53,7 @@ build_grub_uefi() {
 build_iso() {
   echo "Creating bootable ISO..."
   mkdir -p "${OUTPUT_DIR}"
+  find "${ISO_DIR}"
   xorriso \
     -as mkisofs \
     -iso-level 3 \
@@ -62,8 +63,7 @@ build_iso() {
     -appid "${ISO_APPID}" \
     -publisher "${ISO_PUBLISHER}" \
     -preparer "${ISO_PREPARER}" \
-    --mbr-force-bootable \
-    -apm-block-size 2048 \
+    -c boot.catalog \
     -eltorito-boot boot/grub/core.img \
       -no-emul-boot \
       -boot-load-size 4 \
@@ -78,7 +78,7 @@ build_iso() {
 }
 
 # Create bootable ISO directory structure
-mkdir -p "${ISO_DIR}"/{boot/{isolinux,grub},EFI/boot,install,preseed,live}
+mkdir -p "${ISO_DIR}"/{boot/grub,EFI/boot,install,preseed,live}
 
 # Verify the files were copied correctly
 if [ ! -f "${ISO_DIR}/live/vmlinuz" ] || \
@@ -98,18 +98,23 @@ fi
 
 # Create GRUB for BIOS boot
 echo "Creating GRUB for BIOS boot..."
-build_grub_bios
+#build_grub_bios
 
 # Create GRUB for UEFI boot
 echo "Creating GRUB for UEFI boot..."
-build_grub_uefi
+#build_grub_uefi
 
 # Create the ISO
 echo "Creating the ISO..."
+find "${ISO_DIR}"
 build_iso
 
 # Calculate checksum
 sha256sum "${ISO_OUTPUT_PATH}" > "${ISO_OUTPUT_PATH}.sha256"
+
+# Create convenience symlinks
+ln -s "${ISO_FILENAME}" "${OUTPUT_DIR}/whistlekube-installer.iso"
+ln -s "${ISO_FILENAME}.sha256" "${OUTPUT_DIR}/whistlekube-installer.iso.sha256"
 
 echo "======================================================"
 echo "Build complete!"

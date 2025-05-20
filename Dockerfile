@@ -26,7 +26,7 @@ ENV DEBCONF_NONINTERACTIVE_SEEN=true
 # This stage builds the base chroot environment that is used for both the target and live root filesystems
 FROM base-builder AS rootfs-builder
 # Install required packages for the build process
-# Then run debootstrap to create the minimal Debian system
+# Then run mmdebstrap to create the minimal Debian system
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt/lists <<EOFDOCKER
 set -eux
@@ -44,11 +44,14 @@ ENV ROOTFS_DIR="/rootfs"
 # This stage builds the installer root filesystem
 FROM rootfs-builder AS installer-debstrap
 ENV MMDEBSTRAP_VARIANT="essential"
-ENV MMDEBSTRAP_INCLUDE="live-boot,live-config-systemd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,systemd-sysv,dialog,squashfs-tools,parted,gdisk,e2fsprogs,lvm2,cryptsetup,dosfstools,ca-certificates"
+ENV MMDEBSTRAP_INCLUDE="zstd,live-boot,live-config-systemd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,systemd-sysv,dialog,squashfs-tools,parted,gdisk,e2fsprogs,lvm2,cryptsetup,dosfstools,ca-certificates"
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \
     echo "=== Building INSTALLER rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
-    /scripts/build-rootfs.sh
+    /scripts/build-rootfs.sh && \
+    mkdir -p ${OUTPUT_DIR} && \
+    cp ${ROOTFS_DIR}/boot/vmlinuz-* ${OUTPUT_DIR}/vmlinuz && \
+    cp ${ROOTFS_DIR}/boot/initrd.img-* ${OUTPUT_DIR}/initrd.img
 
 # === Configure the installer rootfs ===
 FROM installer-debstrap AS installer-configure
@@ -69,7 +72,7 @@ EOFDOCKER
 FROM installer-configure AS installer-build
 RUN echo "=== Squashing INSTALLER filesystem ===" && \
     mkdir -p ${OUTPUT_DIR} && \
-    mksquashfs /rootfs ${OUTPUT_DIR}/installer.squashfs -comp xz -no-xattrs -no-fragments -wildcards -b 1M
+    mksquashfs /rootfs ${OUTPUT_DIR}/installer.squashfs -comp zstd -no-xattrs -no-fragments -wildcards -b 1M
 
 # === Installer rootfs artifact ===
 FROM scratch AS installer-artifact
@@ -92,7 +95,7 @@ RUN --security=insecure \
     /scripts/build-rootfs.sh
 RUN echo "=== Squashing TARGET filesystem ===" && \
     mkdir -p ${OUTPUT_DIR} && \
-    mksquashfs /rootfs ${OUTPUT_DIR}/rootfs.squashfs -comp xz -no-xattrs -no-fragments -wildcards -b 1M
+    mksquashfs /rootfs ${OUTPUT_DIR}/rootfs.squashfs -comp zstd -no-xattrs -no-fragments -wildcards -b 1M
 
 # === Target rootfs artifact ===
 FROM scratch AS targetfs-artifact
@@ -134,13 +137,13 @@ apt-get install -y --no-install-recommends \
     grub-common \
     grub-efi-amd64-bin \
     grub-efi-amd64-signed \
-    grub-pc
+    grub-pc-bin
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 EOFDOCKER
 
 # Make the EFI patition image
-COPY /boot/grub/ /config/boot/grub/
+COPY /installer/grub.cfg /boot/grub/grub.cfg
 #COPY /boot/loader/ /efi/loader/
 #COPY --from=installerfs-build /rootfs/usr/lib/systemd/boot/efi/systemd-bootx64.efi /efi/EFI/BOOT/BOOTX64.EFI
 #COPY --from=installerfs-build /rootfs/usr/lib/systemd/boot/efi/systemd-bootx64.efi /efi/EFI/systemd/systemd-bootx64.efi
@@ -163,7 +166,7 @@ grub-mkstandalone \
     --modules "iso9660 normal configfile echo linux search search_label part_msdos part_gpt fat ext2 efi_gop efi_uga all_video font" \
     --locales "" \
     --themes "" \
-    "boot/grub/grub.cfg=/config/boot/grub/grub.cfg"
+    "boot/grub/grub.cfg=/boot/grub/grub.cfg"
 # Unmount the EFI filesystem image
 #cp /config/boot/grub/grub.cfg "${EFI_MOUNT_POINT}/EFI/BOOT/grub.cfg"
 umount "${EFI_MOUNT_POINT}"
@@ -185,7 +188,20 @@ COPY --from=efi-build ${OUTPUT_DIR} /
 
 # === ISO build ===
 # This stage builds the grub images and the final bootable ISO
-FROM base-builder AS iso-build
+FROM base-builder AS iso-build-tools
+
+RUN <<EOFDOCKER
+set -eux
+apt-get update
+apt-get install -y --no-install-recommends \
+    xorriso \
+    grub-pc-bin \
+    xz-utils
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+EOFDOCKER
+
+FROM iso-build-tools AS iso-build
 
 ARG ISO_FILENAME
 ARG ISO_LABEL="WHISTLEKUBE_ISO"
@@ -197,27 +213,18 @@ ENV ISO_DIR="/iso"
 ENV REPO_BINARY_DIR="${ISO_DIR}/pool/main/binary-${DEBIAN_ARCH}"
 ENV REPO_DIST_DIR="${ISO_DIR}/dists/${DEBIAN_RELEASE}/main/binary-${DEBIAN_ARCH}"
 
-RUN <<EOFDOCKER
-set -eux
-apt-get update
-apt-get install -y --no-install-recommends \
-    xorriso \
-    xz-utils
-apt-get clean
-rm -rf /var/lib/apt/lists/*
-EOFDOCKER
-
-COPY --from=installer-build /output/installer.squashfs ${ISO_DIR}/live/filesystem.squashfs
-COPY --from=installer-build /rootfs/boot/vmlinuz-* ${ISO_DIR}/live/vmlinuz
-COPY --from=installer-build /rootfs/boot/initrd.img-* ${ISO_DIR}/live/initrd.img
-COPY --from=targetfs-build /output/rootfs.squashfs ${ISO_DIR}/install/filesystem.squashfs
+COPY --from=installer-build ${OUTPUT_DIR}/vmlinuz ${ISO_DIR}/live/vmlinuz
+COPY --from=installer-build ${OUTPUT_DIR}/initrd.img ${ISO_DIR}/live/initrd.img
+COPY --from=installer-build ${OUTPUT_DIR}/installer.squashfs ${ISO_DIR}/live/filesystem.squashfs
+COPY --from=targetfs-build ${OUTPUT_DIR}/rootfs.squashfs ${ISO_DIR}/install/filesystem.squashfs
 #COPY --from=initrd-build /initrd-live.img ${ISO_DIR}/live/initrd.img
-COPY /boot/grub/grub.cfg ${ISO_DIR}/boot/grub/grub.cfg
+COPY /installer/grub.cfg ${ISO_DIR}/boot/grub/grub.cfg
 COPY --from=efi-build ${OUTPUT_DIR}/efi.img ${ISO_DIR}/boot/grub/efi.img
 COPY --from=efi-build ${OUTPUT_DIR}/core.img ${ISO_DIR}/boot/grub/core.img
 COPY /scripts/build-iso.sh /scripts/build-iso.sh
 
 RUN --security=insecure \
+    mkdir -p ${ISO_DIR}/EFI/boot && \
     /scripts/build-iso.sh
 
 ## RUN mkdir -p ${OUTPUT_DIR} && \

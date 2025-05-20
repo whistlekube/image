@@ -3,8 +3,13 @@
 # This script is used to configure the chroot environment
 # It is called by the Dockerfile when building the installer rootfs
 # and is run within the chroot environment
+# 
+
+rootfs="$1"
 
 set -euxo pipefail
+
+rm -f ${rootfs}/boot/*
 
 systemctl enable whistlekube-installer.service
 

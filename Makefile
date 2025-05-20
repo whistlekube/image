@@ -1,4 +1,4 @@
-.PHONY: all build clean chroot targetfs livefs iso docker-buildx-enable shell shell-chroot shell-targetfs shell-livefs shell-iso help
+.PHONY: all build clean chroot qemu-init qemu-installer qemu-run targetfs livefs iso docker-buildx-enable shell shell-chroot shell-targetfs shell-livefs shell-iso help
 
 # === Environment ===
 # The date of the build
@@ -18,16 +18,25 @@ BUILD_VERSION ?= $(USER)-${BUILD_DATE}-${GIT_BRANCH}
 # The output directory for the build
 OUTPUT_DIR ?= $(shell pwd)/output
 # The filename of the ISO to build
-ISO_FILENAME ?= whistlekube-amd64-${BUILD_VERSION}.iso
+ISO_FILENAME ?= whistlekube-installer-${BUILD_VERSION}.iso
 # The docker target to build
 BUILD_TARGET ?= $(ARTIFACT_BUILD_TARGET)
 # The name of the Docker image to build
 DOCKER_IMAGE_NAME ?= whistlekube-installer-${BUILD_TARGET}
+# The name of the QEMU image to build
+QEMU_IMAGE_NAME ?= whistlekube-disk
+QEMU_IMAGE_PATH ?= $(OUTPUT_DIR)/$(QEMU_IMAGE_NAME).qcow2
+# The size of the QEMU image to build
+QEMU_IMAGE_SIZE ?= 10G
+# The path to the OVMF code file
+OVMF_CODE_PATH ?= /usr/share/OVMF/OVMF_CODE_4M.fd
+# The path to the OVMF vars file
+OVMF_VARS_PATH ?= /usr/share/OVMF/OVMF_VARS_4M.fd
 # Custom build flags to pass to docker buildx
 EXTRA_BUILD_FLAGS ?=
 # Debian mirror to use for the build
 DEBIAN_MIRROR ?= http://deb.debian.org/debian
-	
+
 # Build up the complete set of build flags
 BUILD_FLAGS := --allow security.insecure \
                --target $(BUILD_TARGET) \
@@ -35,7 +44,7 @@ BUILD_FLAGS := --allow security.insecure \
                --build-arg DEBIAN_RELEASE=$(DEBIAN_RELEASE) \
                --build-arg BUILD_VERSION=$(BUILD_VERSION) \
                --build-arg DEBIAN_MIRROR=$(DEBIAN_MIRROR) \
-
+               --build-arg ISO_FILENAME=$(ISO_FILENAME)
 # If this is the artifact build target, add the output directory flag
 # Otherwise, load the image into the local Docker daemon
 ifneq ($(filter %artifact,$(BUILD_TARGET)),)
@@ -64,7 +73,7 @@ help:
 	@echo "  DEBIAN_RELEASE=xxx - Specify Debian release (default: trixie)"
 	@echo "  DEBIAN_MIRROR=xxx - Specify Debian mirror (default: http://deb.debian.org/debian)"
 	@echo "  BUILD_VERSION=xxx - Specify build version (default: dev-BUILD_DATE-GIT_COMMIT)"
-	@echo "  ISO_FILENAME=xxx - Specify ISO filename (default: whistlekube-DEBIAN_RELEASE-BUILD_VERSION.iso)"
+	@echo "  ISO_FILENAME=xxx - Specify ISO filename (default: whistlekube-installer-BUILD_VERSION.iso)"
 
 # Build a docker target (default is artifact, which builds the full ISO)
 build:
@@ -149,3 +158,24 @@ shell-livefs:
 shell-iso:
 	@echo "Running interactive shell in iso-build container..."
 	@$(MAKE) shell BUILD_TARGET=iso-build $(MAKEFLAGS)
+
+# Build a QEMU image
+qemu-init:
+	@echo "Building QEMU image..."
+	qemu-img create -f qcow2 $(QEMU_IMAGE_PATH) $(QEMU_IMAGE_SIZE)
+	cp $(OVMF_VARS_PATH) $(OUTPUT_DIR)/OVMF_VARS.fd
+
+# Run a QEMU instance booting from the installer ISO (BIOS)
+qemu-installer-bios:
+	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio -boot d -cdrom $(OUTPUT_DIR)/$(ISO_FILENAME)
+
+# Run a QEMU instance booting from the installer ISO (UEFI)
+qemu-installer-uefi:
+	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio \
+		-boot d -cdrom $(OUTPUT_DIR)/$(ISO_FILENAME) \
+		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE_PATH) \
+		-drive if=pflash,format=raw,file=$(OUTPUT_DIR)/OVMF_VARS.fd
+
+# Run a QEMU instance on the target filesystem
+qemu-run:
+	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio -boot c
