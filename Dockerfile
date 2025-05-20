@@ -67,7 +67,7 @@ ENV MMDEBSTRAP_VARIANT="essential"
 ENV MMDEBSTRAP_INCLUDE="\
     zstd,live-boot,live-config-systemd,\
     linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,\
-    systemd-sysv,dialog,squashfs-tools,parted,gdisk,e2fsprogs,\
+    systemd-sysv,bash,coreutils,dialog,squashfs-tools,parted,gdisk,e2fsprogs,\
     lvm2,cryptsetup,dosfstools,ca-certificates,\
     grub-common,grub-efi-amd64-bin,grub-efi-amd64-signed,grub-pc-bin"
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
@@ -110,7 +110,8 @@ WORKDIR /build
 ENV ROOTFS_DIR="/rootfs"
 ENV MMDEBSTRAP_VARIANT="apt"
 #ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
-ENV MMDEBSTRAP_INCLUDE="zstd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,systemd-sysv,passwd"
+ENV MMDEBSTRAP_INCLUDE="zstd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,\
+    systemd-sysv,passwd,util-linux,coreutils,dbus,libpam-systemd,login,bash,ca-certificates"
 #COPY /boot/ /config/boot/
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \

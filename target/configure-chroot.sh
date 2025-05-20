@@ -10,7 +10,8 @@ rootfs="$1"
 set -euxo pipefail
 
 # Delete the kernel and initrd images, these will live outside the squashfs
-rm -f ${rootfs}/boot/*
+rm -f ${rootfs}/boot/vmlinuz-*
+rm -f ${rootfs}/boot/initrd.img-*
 
 echo "TTYPath=/dev/tty4" >> ${rootfs}/etc/systemd/journald.conf
 

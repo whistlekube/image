@@ -383,21 +383,11 @@ EOF
         cat <<EOF > ${tmp_grub_cfg}
 search --fs-uuid --set=root $(blkid -s UUID -o value "$target_dev")
 set prefix=(\$root)/boot/grub
-# Try to load the full config
-if [ -f ${prefix}/grub.cfg ]; then
-  configfile ${prefix}/grub.cfg
-else
-  # Emergency fallback if main config is missing
-  echo "Main configuration not found. Loading emergency options."
-
-  # A very basic fallback entry
-  menuentry "Emergency Boot" {
-    search --fs-uuid --set=root $(blkid -s UUID -o value "$target_dev")
-    linux /boot/vmlinuz-fallback root=UUID=$(blkid -s UUID -o value "$target_dev") ro single
-    initrd /boot/initrd-fallback.img
-  }
-fi
+configfile \${prefix}/grub.cfg
 EOF
+        echo "*************************** efi_grub.cfg ***************************"
+        cat "${tmp_grub_cfg}"
+        echo "*************************** efi_grub.cfg ***************************"
         # EFI partition contains a minimal grub that just loads the grub from the root partition
         mkdir -p "${EFI_MNT}/EFI/BOOT"
         grub-mkstandalone \
