@@ -318,3 +318,35 @@ LABEL org.opencontainers.image.authors="Joe Kramer <joe@whistlekube.com>"
 LABEL org.opencontainers.image.source="https://github.com/whistlekube/image"
 
 COPY --from=iso-build ${OUTPUT_DIR}/ /
+
+# === Qemu build ===
+FROM base-builder AS qemu-builder
+
+RUN <<EOFDOCKER
+set -eux
+apt-get update
+apt-get install -y --no-install-recommends qemu-system-x86-64 qemu-utils
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+EOFDOCKER
+ARG QEMU_IMAGE_PREFIX="disk"
+ARG QEMU_IMAGE_FILENAME="${QEMU_IMAGE_PREFIX}.qcow2"
+
+FROM qemu-builder AS qemu-image-build
+ARG QEMU_IMAGE_SIZE="10G"
+WORKDIR ${OUTPUT_DIR}
+RUN qemu-img create -f qcow2 ./${QEMU_IMAGE_FILENAME} ${QEMU_IMAGE_SIZE}
+
+FROM scratch AS qemu-image-artifact
+ARG OUTPUT_DIR
+COPY --from=qemu-image-build ${OUTPUT_DIR}/ /
+
+FROM qemu-image-build AS qemu-image-install
+ARG QEMU_INSTALLED_IMAGE_FILENAME="${QEMU_IMAGE_PREFIX}-installed.qcow2"
+ARG QEMU_NBD_DEVICE="/dev/nbd0"
+WORKDIR ${OUTPUT_DIR}
+COPY /installer/src/ .
+COPY --from=qemu-image-build ${OUTPUT_DIR}/${QEMU_IMAGE_FILENAME} ./${QEMU_INSTALLED_IMAGE_FILENAME}
+RUN qemu-nbd --connect=${QEMU_NBD_DEVICE} ${QEMU_IMAGE_FILENAME} && \
+    ./bin/wkinstall.sh ${QEMU_NBD_DEVICE}
+

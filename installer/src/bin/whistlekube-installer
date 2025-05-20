@@ -73,7 +73,7 @@ partition_disk() {
 
     # Create partitions
     if is_uefi; then
-        local esp_end=60MiB
+        local esp_end=257MiB
         parted -s "$disk" mklabel gpt
         parted -s "$disk" mkpart primary fat32 1MiB $esp_end
         parted -s "$disk" set 1 esp on
@@ -85,7 +85,7 @@ partition_disk() {
     fi
 
     # Wait for udev to settle and recognize the new partitions
-    sleep 2
+    sleep 1
     udevadm settle
 
     # Determine the device names for the partitions
