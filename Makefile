@@ -1,4 +1,22 @@
-.PHONY: all build clean chroot qemu-init qemu-installer qemu-run targetfs livefs iso docker-buildx-enable shell shell-chroot shell-targetfs shell-livefs shell-iso help
+.PHONY: all \
+        init \
+        build \
+        clean \
+        chroot \
+        qemu-init \
+        qemu-iso \
+        qemu-iso-bios \
+        qemu-iso-uefi \
+        qemu-run \
+        targetfs \
+        livefs \
+        iso \
+        shell \
+        shell-chroot \
+        shell-targetfs \
+        shell-livefs \
+        shell-iso \
+        help
 
 # === Environment ===
 # The date of the build
@@ -75,6 +93,14 @@ help:
 	@echo "  BUILD_VERSION=xxx - Specify build version (default: dev-BUILD_DATE-GIT_COMMIT)"
 	@echo "  ISO_FILENAME=xxx - Specify ISO filename (default: whistlekube-installer-BUILD_VERSION.iso)"
 
+# Create a new buildx builder with insecure options
+init:
+	@echo "Creating new buildx builder with insecure options..."
+	@docker buildx create --use --driver=docker-container --buildkitd-flags "--allow-insecure-entitlement security.insecure"
+	@echo "Bootstrapping buildx builder..."
+	@docker buildx inspect --bootstrap
+	@docker buildx ls
+
 # Build a docker target (default is artifact, which builds the full ISO)
 build:
 	@echo
@@ -115,14 +141,6 @@ livefs:
 # Build the ISO (but not the final artifact container)
 iso:
 	@$(MAKE) build BUILD_TARGET=iso-build $(MAKEFLAGS)
-
-# Create a new buildx builder with insecure options
-docker-buildx-enable:
-	@echo "Creating new buildx builder with insecure options..."
-	@docker buildx create --use --driver=docker-container --buildkitd-flags "--allow-insecure-entitlement security.insecure"
-	@echo "Bootstrapping buildx builder..."
-	@docker buildx inspect --bootstrap
-	@docker buildx ls
 
 # Clean output and temporary files
 clean:
@@ -166,16 +184,25 @@ qemu-init:
 	cp $(OVMF_VARS_PATH) $(OUTPUT_DIR)/OVMF_VARS.fd
 
 # Run a QEMU instance booting from the installer ISO (BIOS)
-qemu-installer-bios:
+qemu-iso-bios:
 	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio -boot d -cdrom $(OUTPUT_DIR)/$(ISO_FILENAME)
 
 # Run a QEMU instance booting from the installer ISO (UEFI)
-qemu-installer-uefi:
+qemu-iso: qemu-iso-uefi
+qemu-iso-uefi:
 	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio \
 		-boot d -cdrom $(OUTPUT_DIR)/$(ISO_FILENAME) \
 		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE_PATH) \
 		-drive if=pflash,format=raw,file=$(OUTPUT_DIR)/OVMF_VARS.fd
 
 # Run a QEMU instance on the target filesystem
-qemu-run:
+qemu-run-bios:
 	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio -boot c
+
+# Run a QEMU instance on the target filesystem
+qemu-run: qemu-run-uefi
+qemu-run-uefi:
+	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio \
+		-boot c \
+		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE_PATH) \
+		-drive if=pflash,format=raw,file=$(OUTPUT_DIR)/OVMF_VARS.fd
