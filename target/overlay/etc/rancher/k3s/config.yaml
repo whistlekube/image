@@ -4,3 +4,16 @@ tls-san:
   - server-hostname-or-ip
 # For airgap installation
 disable-cloud-controller: true
+
+# Disable addons we don't need
+disable:
+  - traefik
+  - servicelb
+  - coredns
+  - local-storage
+  - metrics-server
+flannel-backend: none
+disable-network-policy: true
+disable-kube-proxy: true
+disable-cloud-controller: true
+disable-helm-controller: true

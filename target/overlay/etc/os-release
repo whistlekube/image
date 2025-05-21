@@ -1,0 +1,8 @@
+PRETTY_NAME="Whistlekube GNU/Linux trixie/sid"
+NAME="Whistlekube GNU/Linux"
+VERSION_CODENAME=trixie
+ID=whistlekube
+ID_LIKE=debian
+HOME_URL="https://www.whistlekube.com/"
+SUPPORT_URL="https://www.whistlekube.com/support"
+BUG_REPORT_URL="https://bugs.whistlekube.com/"

@@ -363,34 +363,12 @@ ARG QEMU_INSTALLED_IMAGE_FILENAME="${QEMU_IMAGE_PREFIX}-installed.qcow2"
 ARG NBD_DEVICE="/dev/nbd0"
 WORKDIR /build
 COPY /scripts/qemu-install.sh ./qemu-install.sh
+COPY --from=qemu-image-build ${OUTPUT_DIR}/${QEMU_IMAGE_FILENAME} ./${QEMU_IMAGE_FILENAME}
+# Install the installer
 COPY /installer/src/bin/ /usr/local/sbin/
 COPY /installer/src/lib/ /usr/local/lib/wkinstall/lib/
+# Copy the installer files to the image, mirroring the iso layout
 COPY --from=target-build ${OUTPUT_DIR}/rootfs.squashfs /run/live/medium/install/filesystem.squashfs
 COPY --from=installer-debstrap ${OUTPUT_DIR}/boot/ /run/live/medium/boot/
-COPY --link --from=installer-debstrap ${OUTPUT_DIR}/vmlinuz /run/live/medium/vmlinuz
-COPY --link --from=installer-debstrap ${OUTPUT_DIR}/initrd.img /run/live/medium/initrd.img
-COPY --from=qemu-image-build ${OUTPUT_DIR}/${QEMU_IMAGE_FILENAME} ./${QEMU_IMAGE_FILENAME}
 
 CMD ["/bin/bash", "-c", "./qemu-install.sh"]
-
-
-FROM qemu-image-build AS qemu-image-install
-ARG QEMU_INSTALLED_IMAGE_FILENAME="${QEMU_IMAGE_PREFIX}-installed.qcow2"
-ARG QEMU_NBD_DEVICE="/dev/nbd0"
-WORKDIR /build
-COPY /installer/src/ .
-COPY --from=qemu-image-build ${OUTPUT_DIR}/${QEMU_IMAGE_FILENAME} ${OUTPUT_DIR}/${QEMU_INSTALLED_IMAGE_FILENAME}
-RUN --security=insecure <<EOFDOCKER
-set -eux
-qemu-
-export LIBGUESTFS_DEBUG=1
-export LIBGUESTFS_TRACE=1
-guestfish --rw -a ${OUTPUT_DIR}/${QEMU_INSTALLED_IMAGE_FILENAME} <<EOFFISH
-    run
-    list-devices
-    # 'run' command starts the appliance VM and makes devices available
-    sh "/host/build/bin/wkinstall.sh /dev/sda"
-EOFFISH
-
-EOFDOCKER
-

@@ -66,6 +66,8 @@ cp -a "${WKINSTALL_MEDIUM_PATH}/boot" "${WKINSTALL_BOOT_MNT}/slot_b"
 mkdir "${WKINSTALL_BOOT_MNT}/grub"
 echo "current=a" >> "${WKINSTALL_BOOT_MNT}/grub/abstate.conf"
 install_grub_cfg "${WKINSTALL_BOOT_MNT}" "${boot_uuid}"
+cp -a "${WKINSTALL_MEDIUM_PATH}/install/filesystem.squashfs" "${WKINSTALL_BOOT_MNT}/slot_a/filesystem.squashfs"
+cp -a "${WKINSTALL_MEDIUM_PATH}/install/filesystem.squashfs" "${WKINSTALL_BOOT_MNT}/slot_b/filesystem.squashfs"
 
 echo "=== Copying files to root partition ==="
 mkdir -p "$WKINSTALL_BOOT_MNT/overlay"

@@ -30,9 +30,6 @@ search --fs-uuid --set=root ${boot_uuid}
 set prefix=(\$root)/grub
 configfile \${prefix}/grub.cfg
 EOF
-    echo "*************************** efi_grub.cfg ***************************"
-    cat ${tmp_grub_cfg}
-    echo "*************************** efi_grub.cfg ***************************"
     # EFI partition contains a minimal grub that just loads the grub from the root partition
     mkdir -p "${efi_mount}/EFI/BOOT"
     grub-mkstandalone \
@@ -65,19 +62,27 @@ set default="0"
 menuentry "Whistlekube Linux" {
     search --fs-uuid --set=root ${boot_uuid}
     echo "Loading whistlekube kernel..."
-    linux /vmlinuz boot=live components nomodeset
+    linux /slot_a/vmlinuz boot=live components nomodeset debug live-media-path=/slot_a
     echo "Loading whistlekube initrd..."
-    initrd /initrd.img
+    initrd /slot_a/initrd.img
+}
+
+menuentry "Whistlekube Linux (fallback)" {
+    search --fs-uuid --set=root ${boot_uuid}
+    echo "Loading whistlekube kernel..."
+    linux /slot_b/vmlinuz boot=live components nomodeset debug live-media-path=/slot_b
+    echo "Loading whistlekube initrd..."
+    initrd /slot_b/initrd.img
 }
 
 menuentry "Whistlekube Linux (recovery mode)" {
     search --fs-uuid --set=root ${boot_uuid}
     echo "Loading kernel (recovery mode)..."
-    linux /vmlinuz boot=live components nomodeset \
+    linux /slot_a/vmlinuz boot=live components nomodeset live-media-path=/slot_a \
         noapic noapm nodma nomce nolapic \
         debug # Useful for troubleshooting live-boot
     echo "Loading initial ramdisk (recovery mode)..."
-    initrd /initrd.img
+    initrd /slot_a/initrd.img
 }
 EOF
     
