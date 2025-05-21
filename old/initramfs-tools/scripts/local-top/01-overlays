@@ -1,0 +1,254 @@
+#!/bin/sh
+
+PREREQ=""
+prereqs()
+{
+    echo "$PREREQ"
+}
+
+case $1 in
+prereqs)
+    prereqs
+    exit 0
+    ;;
+esac
+
+. /usr/share/initramfs-tools/scripts/functions # For log_begin_msg, log_end_msg, etc.
+                                              # May need to be /scripts/functions in older initramfs-tools
+
+# --- Begin Configuration ---
+DEFAULT_ROOT_IMAGE="/rootfs.squashfs" # Default if not on cmdline
+DEFAULT_OVERLAY_PERSISTENCE_PATH="/overlays" # Default if not on cmdline
+# --- End Configuration ---
+
+# --- Mount points in initramfs ---
+BOOT_PART_MNT="/mnt/boot_partition"
+RO_ROOT_MNT="/ro_root"
+FINAL_ROOT_MNT="/final_root" # This will become the new root ${rootmnt}
+PERSIST_MNT="/mnt/persistence"
+
+# --- Parse Kernel Command Line ---
+ROOT_DEVICE=""
+ROOT_IMAGE=""
+OVERLAY_DIRS_CONF=""
+OVERLAY_PERSIST_DEV=""
+OVERLAY_PERSIST_PATH=""
+
+for x in $(cat /proc/cmdline); do
+    case $x in
+        root=*)
+            ROOT_DEVICE=${x#root=}
+            ;;
+        rootimage=*)
+            ROOT_IMAGE=${x#rootimage=}
+            ;;
+        overlay_dirs=*)
+            OVERLAY_DIRS_CONF=${x#overlay_dirs=}
+            ;;
+        overlay_persistence_dev=*)
+            OVERLAY_PERSIST_DEV=${x#overlay_persistence_dev=}
+            ;;
+        overlay_persistence_path=*)
+            OVERLAY_PERSIST_PATH=${x#overlay_persistence_path=}
+            ;;
+    esac
+done
+
+if [ -z "${ROOT_DEVICE}" ]; then
+    panic "Kernel command line parameter 'root=' not specified!"
+fi
+if [ -z "${ROOT_IMAGE}" ]; then
+    ROOT_IMAGE="${DEFAULT_ROOT_IMAGE}"
+    log_warning_msg "Kernel command line parameter 'rootimage=' not specified, using default: ${ROOT_IMAGE}"
+fi
+if [ -n "${OVERLAY_DIRS_CONF}" ] && [ -z "${OVERLAY_PERSIST_DEV}" ]; then
+    panic "Kernel command line 'overlay_dirs' specified, but 'overlay_persistence_dev=' is missing!"
+fi
+if [ -z "${OVERLAY_PERSIST_PATH}" ]; then
+    OVERLAY_PERSIST_PATH="${DEFAULT_OVERLAY_PERSISTENCE_PATH}"
+fi
+
+log_begin_msg "Preparing immutable root"
+
+# 1. Mount the boot partition (containing the SquashFS)
+mkdir -p "${BOOT_PART_MNT}"
+if ! mount -o ro "${ROOT_DEVICE}" "${BOOT_PART_MNT}"; then
+    panic "Failed to mount boot partition ${ROOT_DEVICE} on ${BOOT_PART_MNT}"
+fi
+log_success_msg "Mounted boot partition ${ROOT_DEVICE} on ${BOOT_PART_MNT}"
+
+SQUASHFS_PATH="${BOOT_PART_MNT}${ROOT_IMAGE}"
+if [ ! -f "${SQUASHFS_PATH}" ]; then
+    panic "SquashFS image not found at ${SQUASHFS_PATH}"
+fi
+
+# 2. Create mount point for read-only SquashFS root
+mkdir -p "${RO_ROOT_MNT}"
+
+# 3. Mount the SquashFS image
+if ! mount -t squashfs -o ro,loop "${SQUASHFS_PATH}" "${RO_ROOT_MNT}"; then
+    panic "Failed to mount SquashFS ${SQUASHFS_PATH} on ${RO_ROOT_MNT}"
+fi
+log_success_msg "Mounted SquashFS ${SQUASHFS_PATH} on ${RO_ROOT_MNT}"
+
+# 4. Create mount point for the final root
+mkdir -p "${FINAL_ROOT_MNT}"
+
+# 5. Base for final root: bind mount the read-only root.
+#    This makes all files initially available. Overlays will go on top.
+if ! mount --bind "${RO_ROOT_MNT}" "${FINAL_ROOT_MNT}"; then
+    panic "Failed to bind-mount ${RO_ROOT_MNT} to ${FINAL_ROOT_MNT}"
+fi
+log_success_msg "Bind-mounted ${RO_ROOT_MNT} to ${FINAL_ROOT_MNT}"
+
+
+# 6. Handle Overlays if specified
+if [ -n "${OVERLAY_DIRS_CONF}" ]; then
+    log_begin_msg "Setting up persistent overlays"
+    mkdir -p "${PERSIST_MNT}"
+    if ! mount -o rw "${OVERLAY_PERSIST_DEV}" "${PERSIST_MNT}"; then
+        panic "Failed to mount persistence device ${OVERLAY_PERSIST_DEV} on ${PERSIST_MNT}"
+    fi
+    log_success_msg "Mounted persistence device ${OVERLAY_PERSIST_DEV} on ${PERSIST_MNT}"
+
+    # Save and change IFS for comma-separated list
+    OLD_IFS=$IFS
+    IFS=','
+    for DIR_TO_OVERLAY in $OVERLAY_DIRS_CONF; do
+        IFS=$OLD_IFS # Restore IFS
+
+        # Paths are relative to root, strip leading / if any
+        CLEAN_DIR_TO_OVERLAY=$(echo "${DIR_TO_OVERLAY}" | sed 's#^/*##')
+        if [ -z "${CLEAN_DIR_TO_OVERLAY}" ]; then
+            continue
+        fi
+
+        log_begin_msg "Setting up overlay for /${CLEAN_DIR_TO_OVERLAY}"
+
+        LOWERDIR="${RO_ROOT_MNT}/${CLEAN_DIR_TO_OVERLAY}"
+        # Ensure the lowerdir actually exists in the SquashFS.
+        # If not, it's a configuration error or the SquashFS is incomplete.
+        # An overlay can still be created on a non-existent lowerdir, but it's unusual.
+        if [ ! -d "${LOWERDIR}" ] && [ ! -f "${LOWERDIR}" ]; then # Check for dir or file
+             log_warning_msg "Lower directory/file ${LOWERDIR} does not exist in SquashFS. Creating overlay anyway."
+             # We might need to create it in RO_ROOT_MNT for the overlay mount to succeed if it's not there,
+             # but that's not ideal as RO_ROOT_MNT should be pristine.
+             # A better approach might be to ensure it's created in FINAL_ROOT_MNT first.
+             mkdir -p "${FINAL_ROOT_MNT}/${CLEAN_DIR_TO_OVERLAY}" # Ensure mountpoint exists
+        fi
+
+
+        UPPERDIR_BASE="${PERSIST_MNT}${OVERLAY_PERSIST_PATH}"
+        UPPERDIR="${UPPERDIR_BASE}/${CLEAN_DIR_TO_OVERLAY}/upper"
+        WORKDIR="${UPPERDIR_BASE}/${CLEAN_DIR_TO_OVERLAY}/work"
+        OVERLAY_TARGET="${FINAL_ROOT_MNT}/${CLEAN_DIR_TO_OVERLAY}"
+
+        mkdir -p "${UPPERDIR}"
+        mkdir -p "${WORKDIR}"
+        # Ensure the target mount point exists in the final rootfs
+        # It should exist due to the bind mount, unless it was a path not in SquashFS
+        if [ ! -d "${OVERLAY_TARGET}" ] && [ ! -f "${OVERLAY_TARGET}" ]; then
+            # If it's a file path, its parent directory must exist
+            mkdir -p "$(dirname "${OVERLAY_TARGET}")"
+            # If it's a file to be overlaid, lower must exist.
+            # If it's a directory, mkdir -p is fine.
+            if [ ! -e "${LOWERDIR}" ]; then # If lower doesn't exist, create a placeholder in FINAL_ROOT_MNT
+                mkdir -p "${OVERLAY_TARGET}" # If we intend it to be a dir
+            fi
+        fi
+
+
+        log_list_item "Lower: ${LOWERDIR}"
+        log_list_item "Upper: ${UPPERDIR}"
+        log_list_item "Work:  ${WORKDIR}"
+        log_list_item "Target: ${OVERLAY_TARGET}"
+
+        if ! mount -t overlay overlay \
+            -o "lowerdir=${LOWERDIR},upperdir=${UPPERDIR},workdir=${WORKDIR},rw" \
+            "${OVERLAY_TARGET}"; then
+            panic "Failed to mount overlay for /${CLEAN_DIR_TO_OVERLAY}"
+        fi
+        log_success_msg "Mounted overlay for /${CLEAN_DIR_TO_OVERLAY}"
+
+        IFS=',' # Reset IFS for the loop
+    done
+    IFS=$OLD_IFS # Restore IFS fully
+    log_end_msg "Persistent overlays setup complete"
+else
+    log_action "No persistent overlays requested."
+    # If no overlays, FINAL_ROOT_MNT is currently a read-only bind mount.
+    # If you want a fully tmpfs-backed writable system (non-persistent changes),
+    # you would have mounted tmpfs on FINAL_ROOT_MNT first, then copied/bind-mounted.
+    # For strictly immutable with *optional* directory persistence, the bind mount is fine.
+    # The system will largely be read-only except for tmpfs mounts like /tmp, /run.
+fi
+
+# 7. Tell initramfs-tools where the new root is
+# The standard scripts expect 'rootmnt' to be set.
+# In many initramfs-tools versions, this script is expected to mount to ${rootmnt}
+# which is often /root. Let's ensure we align.
+# /scripts/local expects the root fs to be mounted on ${rootmnt}
+# Check your /usr/share/initramfs-tools/scripts/local to see what it expects.
+# Often, you just need to set the 'ROOT' variable if this script does the actual mount.
+# Or, if this script is a "local-top", it might prepare devices, and "local" does the mount.
+# For this comprehensive script, we are doing the mount.
+# We need to make sure that subsequent scripts use OUR mount.
+
+# The crucial step: initramfs-tools' /scripts/local will try to mount $ROOTDEV on $rootmnt
+# We have already mounted our intended root. We need to make $rootmnt point to it.
+# A common way is to simply mount our final root *onto* the $rootmnt expected by later scripts.
+# Usually, $rootmnt is '/root'.
+if [ -z "${rootmnt}" ]; then
+    rootmnt=/root # Default if not set by earlier scripts
+fi
+
+# Ensure $rootmnt exists (it should, standard initramfs dir)
+mkdir -p "${rootmnt}"
+
+# Move our prepared root to where initramfs-tools expects it
+if ! mount --move "${FINAL_ROOT_MNT}" "${rootmnt}"; then
+    # As a fallback, if --move fails (e.g. busy), try bind mount and make others use FINAL_ROOT_MNT
+    # This part is tricky and depends on how subsequent 'local' scripts behave.
+    # The cleanest is if this script itself sets the final $rootmnt.
+    # Let's assume this script *defines* the root and subsequent scripts just use it.
+    log_warning_msg "Could not move ${FINAL_ROOT_MNT} to ${rootmnt}. Subsequent scripts might be confused."
+    # If this happens, you might need to adjust /usr/share/initramfs-tools/scripts/local
+    # or ensure this script *is* the one that sets $ROOT and $rootmnt definitively.
+    # For now, we'll proceed assuming $rootmnt is now our $FINAL_ROOT_MNT via the move.
+else
+    log_success_msg "Moved ${FINAL_ROOT_MNT} to ${rootmnt} for switch_root"
+fi
+
+# Some initramfs setups also look at $ROOT, $ROOTFLAGS, $ROOTFSTYPE
+# Since we've done the complex mounting, we primarily need to ensure $rootmnt is correct.
+# If $rootmnt was something else before, the 'mount --move' above handles it.
+# The /init script will eventually do: exec switch_root ${rootmnt} /sbin/init "$@" <${rootmnt}/dev/console >${rootmnt}/dev/console 2>&${rootmnt}/dev/console
+
+# Cleanup temporary mount of the boot partition if we are not using it for persistence
+# Check if OVERLAY_PERSIST_DEV is the same as ROOT_DEVICE's partition
+# This is a simplified check; a more robust check would compare major:minor numbers
+root_device_resolved=$(findfs "${ROOT_DEVICE}")
+persist_device_resolved=""
+if [ -n "${OVERLAY_PERSIST_DEV}" ]; then
+    persist_device_resolved=$(findfs "${OVERLAY_PERSIST_DEV}")
+fi
+
+if [ "${root_device_resolved}" = "${persist_device_resolved}" ]; then
+    log_action "Persistence device is the same as boot device. Not unmounting ${BOOT_PART_MNT} yet."
+    # In this case, PERSIST_MNT is a path *within* BOOT_PART_MNT.
+    # We need to be careful if we unmount BOOT_PART_MNT.
+    # The overlays are already mounted, so their underlying device (boot partition)
+    # needs to stay mounted. switch_root will handle unmounting non-essential initramfs mounts.
+else
+    # If persistence is on a different device, we can unmount the boot partition.
+    # However, the loop device for SquashFS is still using it.
+    # switch_root should handle cleaning up these mounts.
+    # For now, let's leave it; switch_root is pretty good.
+    # umount "${BOOT_PART_MNT}" # This would fail due to loop device
+    log_action "Boot partition ${BOOT_PART_MNT} and loop device for SquashFS will be handled by switch_root."
+fi
+
+
+log_end_msg "Immutable root preparation complete. ${rootmnt} is ready."
+
+exit 0

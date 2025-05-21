@@ -11,7 +11,11 @@ set -euxo pipefail
 
 rm -f ${rootfs}/boot/*
 
+# Systemd output on tty4
 echo "TTYPath=/dev/tty4" >> ${rootfs}/etc/systemd/journald.conf
 
+# Enable the whistlekube-installer service so it runs on boot
 systemctl enable whistlekube-installer.service
 
+# Update the initramfs
+update-initramfs -u -k all

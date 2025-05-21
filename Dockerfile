@@ -71,8 +71,7 @@ ENV MMDEBSTRAP_INCLUDE="\
     linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,\
     systemd-sysv,bash,coreutils,\
     dialog,squashfs-tools,parted,gdisk,e2fsprogs,\
-    lvm2,cryptsetup,dosfstools,ca-certificates,\
-    grub-common,grub-efi-amd64-bin,grub-efi-amd64-signed,grub-pc-bin"
+    lvm2,cryptsetup,dosfstools,ca-certificates"
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \
     echo "=== Building INSTALLER rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
