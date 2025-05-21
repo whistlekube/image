@@ -342,11 +342,11 @@ main() {
 
     # Copy live files to target
     mkdir -p "${TARGET_MNT}/slot_a"
-    cp /run/live/medium/install/filesystem.squashfs "${TARGET_MNT}/slot_a/rootfs.squashfs"
+    cp /run/live/medium/install/filesystem.squashfs "${TARGET_MNT}/slot_a/filesystem.squashfs"
     cp /run/live/medium/boot/vmlinuz "${TARGET_MNT}/slot_a/vmlinuz"
     cp /run/live/medium/boot/initrd.img "${TARGET_MNT}/slot_a/initrd.img"
     mkdir -p "${TARGET_MNT}/slot_b"
-    cp /run/live/medium/install/filesystem.squashfs "${TARGET_MNT}/slot_b/rootfs.squashfs"
+    cp /run/live/medium/install/filesystem.squashfs "${TARGET_MNT}/slot_b/filesystem.squashfs"
     cp /run/live/medium/boot/vmlinuz "${TARGET_MNT}/slot_b/vmlinuz"
     cp /run/live/medium/boot/initrd.img "${TARGET_MNT}/slot_b/initrd.img"
 
@@ -361,9 +361,17 @@ set default="0"
 menuentry "Whistlekube Linux" {
     search --fs-uuid --set=root $(blkid -s UUID -o value "$target_dev")
     echo "Loading whistlekube kernel..."
-    linux /slot_a/vmlinuz boot=live components nomodeset
+    linux /slot_a/vmlinuz boot=live components nomodeset live-media-path=/slot_a debug=true
     echo "Loading whistlekube initrd..."
     initrd /slot_a/initrd.img
+}
+
+menuentry "Whistlekube Linux (fallback)" {
+    search --fs-uuid --set=root $(blkid -s UUID -o value "$target_dev")
+    echo "Loading whistlekube kernel..."
+    linux /slot_b/vmlinuz boot=live components nomodeset live-media-path=/slot_b debug=true
+    echo "Loading whistlekube initrd..."
+    initrd /slot_b/initrd.img
 }
 
 menuentry "Whistlekube Linux (recovery mode)" {

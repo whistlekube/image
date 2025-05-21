@@ -181,12 +181,12 @@ shell-chroot:
 	@$(MAKE) shell BUILD_TARGET=chroot-builder $(MAKEFLAGS)
 
 shell-targetfs:
-	@echo "Running interactive shell in targetfs-build container..."
-	@$(MAKE) shell BUILD_TARGET=targetfs-build $(MAKEFLAGS)
+	@echo "Running interactive shell in target-build container..."
+	@$(MAKE) shell BUILD_TARGET=target-build $(MAKEFLAGS)
 
 shell-livefs:
-	@echo "Running interactive shell in livefs-build container..."
-	@$(MAKE) shell BUILD_TARGET=livefs-build $(MAKEFLAGS)
+	@echo "Running interactive shell in live-build container..."
+	@$(MAKE) shell BUILD_TARGET=live-build $(MAKEFLAGS)
 
 shell-iso:
 	@echo "Running interactive shell in iso-build container..."
@@ -230,5 +230,6 @@ qemu-run: qemu-run-uefi
 qemu-run-uefi:
 	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio \
 		-boot c \
+		-serial stdio \
 		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE_PATH) \
 		-drive if=pflash,format=raw,file=$(OUTPUT_DIR)/OVMF_VARS.fd

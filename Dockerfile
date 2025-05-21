@@ -44,10 +44,9 @@ RUN mkdir -p ${OUTPUT_DIR} && \
     chmod +x ${OUTPUT_DIR}/k3s
 
 # === Base rootfs builder with tools installed ===
-# This stage builds the base chroot environment that is used for both the target and live root filesystems
+# This stage installs mmdebstrap and squashfs-tools for building the root filesystems
 FROM base-builder AS rootfs-builder
-# Install required packages for the build process
-# Then run mmdebstrap to create the minimal Debian system
+ENV ROOTFS_DIR="/rootfs"
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt/lists <<EOFDOCKER
 set -eux
@@ -59,7 +58,6 @@ apt-get install -y --no-install-recommends \
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 EOFDOCKER
-ENV ROOTFS_DIR="/rootfs"
 
 # === Installer rootfs build ===
 # This stage builds the installer root filesystem
@@ -67,7 +65,7 @@ FROM rootfs-builder AS installer-debstrap
 ARG OUTPUT_DIR
 ENV MMDEBSTRAP_VARIANT="essential"
 ENV MMDEBSTRAP_INCLUDE="\
-    zstd,live-boot,live-config,\
+    zstd,live-boot,grub-common,grub-pc-bin,grub-efi-amd64-bin,grub-efi-amd64-signed,\
     linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,\
     systemd-sysv,bash,coreutils,\
     dialog,squashfs-tools,parted,gdisk,e2fsprogs,\
@@ -120,7 +118,7 @@ ENV MMDEBSTRAP_VARIANT="apt"
 #ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
 ENV MMDEBSTRAP_INCLUDE="zstd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,\
     systemd-sysv,passwd,util-linux,coreutils,bash,login,dbus,ca-certificates,\
-    iproute2,procps,less,vim-tiny,containernetworking-plugins"
+    iproute2,procps,less,vim-tiny"
 #COPY /boot/ /config/boot/
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \
@@ -132,7 +130,7 @@ RUN --security=insecure \
 FROM target-debstrap AS target-configure
 COPY /target/overlay/ ${ROOTFS_DIR}/
 COPY --from=k3s-download ${OUTPUT_DIR}/k3s ${ROOTFS_DIR}/usr/local/bin/k3s
-COPY --from=k3s-download ${OUTPUT_DIR}/k3s-airgap-images-${DEBIAN_ARCH}.tar.gz ${ROOTFS_DIR}/var/lib/rancher/k3s/agent/images/
+#COPY --from=k3s-download ${OUTPUT_DIR}/k3s-airgap-images-${DEBIAN_ARCH}.tar.gz ${ROOTFS_DIR}/var/lib/rancher/k3s/agent/images/
 COPY /target/configure-chroot.sh ${ROOTFS_DIR}/configure-chroot.sh
 COPY /scripts/mount-chroot.sh /scripts/mount-chroot.sh
 COPY /scripts/umount-chroot.sh /scripts/umount-chroot.sh
