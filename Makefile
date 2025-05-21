@@ -1,6 +1,7 @@
 .PHONY: all \
         init \
         build \
+        debug \
         clean \
         chroot \
         qemu-init \
@@ -135,6 +136,10 @@ build:
 	@mkdir -p $(OUTPUT_DIR)
 	docker buildx build $(BUILD_FLAGS) -t $(DOCKER_IMAGE_NAME) .
 	@echo "Make build ${BUILD_TARGET} completed successfully"
+
+# Build with debug mode enabled
+debug:
+	@$(MAKE) build WKINSTALL_DEBUG=true $(MAKEFLAGS)
 
 # Build just the base chroot
 chroot:

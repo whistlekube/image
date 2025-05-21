@@ -341,10 +341,14 @@ main() {
     fi
 
     # Copy live files to target
-    mkdir -p "${TARGET_MNT}/live"
-    cp /run/live/medium/install/filesystem.squashfs "${TARGET_MNT}/live/filesystem.squashfs"
-    cp /run/live/medium/vmlinuz "${TARGET_MNT}/live/vmlinuz"
-    cp /run/live/medium/initrd.img "${TARGET_MNT}/live/initrd.img"
+    mkdir -p "${TARGET_MNT}/slot_a"
+    cp /run/live/medium/install/filesystem.squashfs "${TARGET_MNT}/slot_a/rootfs.squashfs"
+    cp /run/live/medium/boot/vmlinuz "${TARGET_MNT}/slot_a/vmlinuz"
+    cp /run/live/medium/boot/initrd.img "${TARGET_MNT}/slot_a/initrd.img"
+    mkdir -p "${TARGET_MNT}/slot_b"
+    cp /run/live/medium/install/filesystem.squashfs "${TARGET_MNT}/slot_b/rootfs.squashfs"
+    cp /run/live/medium/boot/vmlinuz "${TARGET_MNT}/slot_b/vmlinuz"
+    cp /run/live/medium/boot/initrd.img "${TARGET_MNT}/slot_b/initrd.img"
 
     local target_dev=$(target_part "$disk")
 
@@ -357,19 +361,19 @@ set default="0"
 menuentry "Whistlekube Linux" {
     search --fs-uuid --set=root $(blkid -s UUID -o value "$target_dev")
     echo "Loading whistlekube kernel..."
-    linux /live/vmlinuz boot=live components nomodeset
+    linux /slot_a/vmlinuz boot=live components nomodeset
     echo "Loading whistlekube initrd..."
-    initrd /live/initrd.img
+    initrd /slot_a/initrd.img
 }
 
 menuentry "Whistlekube Linux (recovery mode)" {
     search --fs-uuid --set=root $(blkid -s UUID -o value "$target_dev")
     echo "Loading kernel (recovery mode)..."
-    linux /live/vmlinuz boot=live components nomodeset \
+    linux /slot_a/vmlinuz boot=live components nomodeset \
         noapic noapm nodma nomce nolapic \
         debug # Useful for troubleshooting live-boot
     echo "Loading initial ramdisk (recovery mode)..."
-    initrd /live/initrd.img
+    initrd /slot_a/initrd.img
 }
 EOF
 

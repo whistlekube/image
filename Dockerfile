@@ -285,6 +285,7 @@ COPY --from=efi-build ${OUTPUT_DIR}/grub.efi ${ISO_DIR}/EFI/BOOT/BOOTX64.EFI
 RUN <<EOFDOCKER
 echo "=== ISO Contents ==="
 find ${ISO_DIR}
+echo "=== ISO Contents done ==="
 EOFDOCKER
 
 RUN --security=insecure \
