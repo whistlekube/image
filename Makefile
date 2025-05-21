@@ -35,6 +35,8 @@ DEBIAN_RELEASE ?= trixie
 BUILD_VERSION ?= $(USER)-${BUILD_DATE}-${GIT_BRANCH}
 # The output directory for the build
 OUTPUT_DIR ?= $(shell pwd)/output
+# Debug mode
+WKINSTALL_DEBUG ?= false
 # The filename of the ISO to build
 ISO_FILENAME ?= whistlekube-installer-${BUILD_VERSION}.iso
 # The docker target to build
@@ -60,7 +62,6 @@ DEBIAN_MIRROR ?= http://deb.debian.org/debian
 # Build up the complete set of build flags
 BUILD_FLAGS := --allow security.insecure \
                --target $(BUILD_TARGET) \
-               --progress=plain \
                --build-arg DEBIAN_RELEASE=$(DEBIAN_RELEASE) \
                --build-arg BUILD_VERSION=$(BUILD_VERSION) \
                --build-arg DEBIAN_MIRROR=$(DEBIAN_MIRROR) \
@@ -71,6 +72,11 @@ ifneq ($(filter %artifact,$(BUILD_TARGET)),)
     BUILD_FLAGS += --output type=local,dest=$(OUTPUT_DIR)
 else
     BUILD_FLAGS += --load
+endif
+
+# If debug mode is enabled, add the debug flag
+ifeq ($(WKINSTALL_DEBUG),true)
+    BUILD_FLAGS += --progress=plain
 endif
 
 BUILD_FLAGS += $(EXTRA_BUILD_FLAGS)

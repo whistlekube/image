@@ -343,8 +343,8 @@ main() {
     # Copy live files to target
     mkdir -p "${TARGET_MNT}/live"
     cp /run/live/medium/install/filesystem.squashfs "${TARGET_MNT}/live/filesystem.squashfs"
-    cp /run/live/medium/live/vmlinuz "${TARGET_MNT}/live/vmlinuz"
-    cp /run/live/medium/live/initrd.img "${TARGET_MNT}/live/initrd.img"
+    cp /run/live/medium/vmlinuz "${TARGET_MNT}/live/vmlinuz"
+    cp /run/live/medium/initrd.img "${TARGET_MNT}/live/initrd.img"
 
     local target_dev=$(target_part "$disk")
 

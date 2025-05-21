@@ -3,6 +3,15 @@
 if [[ "${_WHISTLEKUBE_BOOT_INCLUDED:-}" != "yes" ]]; then
 _WHISTLEKUBE_BOOT_INCLUDED=yes
 
+# Function to check if the system is UEFI
+is_uefi() {
+    if [ -d "/sys/firmware/efi" ]; then
+        return 0  # UEFI
+    else
+        return 1  # Legacy BIOS
+    fi
+}
+
 # Build a minimal efi stub that just loads grub from the root partition
 install_efi_stub() {
     local efi_mount="$1"
@@ -18,11 +27,11 @@ install_efi_stub() {
     local tmp_grub_cfg="/tmp/grub.cfg"
     cat <<EOF > ${tmp_grub_cfg}
 search --fs-uuid --set=root ${boot_uuid}
-set prefix=(\$root)/boot/grub
+set prefix=(\$root)/grub
 configfile \${prefix}/grub.cfg
 EOF
     echo "*************************** efi_grub.cfg ***************************"
-    cat "${tmp_grub_cfg}"
+    cat ${tmp_grub_cfg}
     echo "*************************** efi_grub.cfg ***************************"
     # EFI partition contains a minimal grub that just loads the grub from the root partition
     mkdir -p "${efi_mount}/EFI/BOOT"
@@ -34,7 +43,7 @@ EOF
         --themes "" \
         "boot/grub/grub.cfg=${tmp_grub_cfg}"
 
-    rm -f "${tmp_grub_cfg}"
+    rm -f ${tmp_grub_cfg}
 }
 
 install_grub_cfg() {

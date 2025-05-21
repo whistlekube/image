@@ -12,10 +12,14 @@ MMDEBSTRAP_VARIANT=${MMDEBSTRAP_VARIANT:-essential}
 MMDEBSTRAP_INCLUDE=${MMDEBSTRAP_INCLUDE:-"${SYSTEMD_PACKAGES} ${LINUX_PACKAGES}"}
 EXTRA_APT_OPTIONS=${EXTRA_APT_OPTIONS:-}
 
+# Debug mode
+if [ "${WKINSTALL_DEBUG:-false}" = "true" ]; then
+  EXTRA_APT_OPTIONS="${EXTRA_APT_OPTIONS} --verbose"
+fi
+
 # Create minimal Debian rootfs with mmdebstrap
 echo "Creating rootfs with mmdebstrap..."
 mmdebstrap \
-  --verbose \
   --variant=${MMDEBSTRAP_VARIANT} \
   --include="$MMDEBSTRAP_INCLUDE" \
   --components="main contrib non-free non-free-firmware" \

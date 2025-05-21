@@ -1,6 +1,12 @@
 #!/bin/bash
 
-set -euxo pipefail
+set -euo pipefail
+
+# Check if running as root
+if [ "$(id -u)" -ne 0 ]; then
+    echo -e "${RED}This script must be run as root!${NC}"
+    exit 1
+fi
 
 WKINSTALL_MEDIUM_PATH=${WKINSTALL_MEDIUM_PATH:-/run/live/medium}
 WKINSTALL_EFI_MNT=${WKINSTALL_EFI_MNT:-/mnt/wkinstall-efi}
@@ -55,9 +61,10 @@ echo "=== Copying files to EFI partition ==="
 install_efi_stub "$WKINSTALL_EFI_MNT" "$boot_uuid"
 
 echo "=== Copying files to boot partition ==="
-cp -a "${WKINSTALL_MEDIUM_PATH}/boot" "${WKINSTALL_BOOT_MNT}/boot"
-cp -a "${WKINSTALL_MEDIUM_PATH}/vmlinuz" "${WKINSTALL_BOOT_MNT}/vmlinuz"
-cp -a "${WKINSTALL_MEDIUM_PATH}/initrd.img" "${WKINSTALL_BOOT_MNT}/initrd.img"
+cp -a "${WKINSTALL_MEDIUM_PATH}/boot" "${WKINSTALL_BOOT_MNT}/slot_a"
+cp -a "${WKINSTALL_MEDIUM_PATH}/boot" "${WKINSTALL_BOOT_MNT}/slot_b"
+mkdir "${WKINSTALL_BOOT_MNT}/grub"
+echo "current=a" >> "${WKINSTALL_BOOT_MNT}/grub/abstate.conf"
 install_grub_cfg "${WKINSTALL_BOOT_MNT}" "${boot_uuid}"
 
 echo "=== Copying files to root partition ==="

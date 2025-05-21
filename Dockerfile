@@ -7,6 +7,7 @@ ARG DEBIAN_MIRROR="http://deb.debian.org/debian"
 ARG ISO_FILENAME="whistlekube-installer-${BUILD_VERSION}.iso"
 ARG OUTPUT_DIR="/output"
 ARG K3S_VERSION="v1.33.0+k3s1"
+ARG WKINSTALL_DEBUG="false"
 
 
 # === Base builder ===
@@ -77,9 +78,9 @@ RUN --security=insecure \
     echo "=== Building INSTALLER rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
     /scripts/build-rootfs.sh && \
     mkdir -p ${OUTPUT_DIR} && \
-    cp -a ${ROOTFS_DIR}/vmlinuz ${OUTPUT_DIR}/vmlinuz && \
-    cp -a ${ROOTFS_DIR}/initrd.img ${OUTPUT_DIR}/initrd.img && \
     cp -a ${ROOTFS_DIR}/boot ${OUTPUT_DIR}/boot && \
+    mv ${OUTPUT_DIR}/boot/vmlinuz-* ${OUTPUT_DIR}/boot/vmlinuz && \
+    mv ${OUTPUT_DIR}/boot/initrd.img-* ${OUTPUT_DIR}/boot/initrd.img && \
     find ${OUTPUT_DIR}
 
 # === Configure the installer rootfs ===
@@ -272,8 +273,6 @@ ENV REPO_DIST_DIR="${ISO_DIR}/dists/${DEBIAN_RELEASE}/main/binary-${DEBIAN_ARCH}
 ENV HYBRID_MBR_PATH="/usr/lib/grub/i386-pc/boot_hybrid.img"
 
 COPY --from=installer-debstrap ${OUTPUT_DIR}/boot/ ${ISO_DIR}/boot/
-COPY --from=installer-debstrap ${OUTPUT_DIR}/vmlinuz ${ISO_DIR}/vmlinuz
-COPY --from=installer-debstrap ${OUTPUT_DIR}/initrd.img ${ISO_DIR}/initrd.img
 COPY --from=installer-build ${OUTPUT_DIR}/installer.squashfs ${ISO_DIR}/live/filesystem.squashfs
 COPY --from=target-build ${OUTPUT_DIR}/rootfs.squashfs ${ISO_DIR}/install/filesystem.squashfs
 #COPY --from=initrd-build /initrd-live.img ${ISO_DIR}/live/initrd.img
@@ -282,6 +281,11 @@ COPY --from=efi-build ${OUTPUT_DIR}/efi.img ${ISO_DIR}/boot/grub/efi.img
 COPY --from=efi-build ${OUTPUT_DIR}/core.img ${ISO_DIR}/boot/grub/core.img
 COPY --from=efi-build ${OUTPUT_DIR}/grub.efi ${ISO_DIR}/EFI/BOOT/BOOTX64.EFI
 #COPY /scripts/build-iso.sh /scripts/build-iso.sh
+
+RUN <<EOFDOCKER
+echo "=== ISO Contents ==="
+find ${ISO_DIR}
+EOFDOCKER
 
 RUN --security=insecure \
     mkdir -p ${OUTPUT_DIR} && \
@@ -330,8 +334,10 @@ RUN <<EOFDOCKER
 set -eux
 apt-get update
 apt-get install -y --no-install-recommends \
-    linux-image-amd64 \
-    libguestfs-tools \
+    udev \
+    parted \
+    e2fsprogs \
+    dosfstools \
     grub-common \
     grub-pc-bin \
     grub-efi-amd64-bin \
@@ -363,8 +369,8 @@ COPY /installer/src/bin/ /usr/local/sbin/
 COPY /installer/src/lib/ /usr/local/lib/wkinstall/lib/
 COPY --from=target-build ${OUTPUT_DIR}/rootfs.squashfs /run/live/medium/install/filesystem.squashfs
 COPY --from=installer-debstrap ${OUTPUT_DIR}/boot/ /run/live/medium/boot/
-COPY --from=installer-debstrap ${OUTPUT_DIR}/vmlinuz /run/live/medium/vmlinuz
-COPY --from=installer-debstrap ${OUTPUT_DIR}/initrd.img /run/live/medium/initrd.img
+COPY --link --from=installer-debstrap ${OUTPUT_DIR}/vmlinuz /run/live/medium/vmlinuz
+COPY --link --from=installer-debstrap ${OUTPUT_DIR}/initrd.img /run/live/medium/initrd.img
 COPY --from=qemu-image-build ${OUTPUT_DIR}/${QEMU_IMAGE_FILENAME} ./${QEMU_IMAGE_FILENAME}
 
 CMD ["/bin/bash", "-c", "./qemu-install.sh"]
