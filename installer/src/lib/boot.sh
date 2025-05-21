@@ -1,0 +1,77 @@
+#!/bin/bash
+
+if [[ "${_WHISTLEKUBE_BOOT_INCLUDED:-}" != "yes" ]]; then
+_WHISTLEKUBE_BOOT_INCLUDED=yes
+
+# Build a minimal efi stub that just loads grub from the root partition
+install_efi_stub() {
+    local efi_mount="$1"
+    local boot_uuid="$2"
+
+    # Make sure arguments are set
+    if [ -z "$efi_mount" ] || [ -z "$boot_uuid" ]; then
+        echo "Error: install_efi_stub: Missing arguments"
+        echo "Usage: install_efi_stub <efi_mount> <boot_uuid>"
+        return 1
+    fi
+
+    local tmp_grub_cfg="/tmp/grub.cfg"
+    cat <<EOF > ${tmp_grub_cfg}
+search --fs-uuid --set=root ${boot_uuid}
+set prefix=(\$root)/boot/grub
+configfile \${prefix}/grub.cfg
+EOF
+    echo "*************************** efi_grub.cfg ***************************"
+    cat "${tmp_grub_cfg}"
+    echo "*************************** efi_grub.cfg ***************************"
+    # EFI partition contains a minimal grub that just loads the grub from the root partition
+    mkdir -p "${efi_mount}/EFI/BOOT"
+    grub-mkstandalone \
+        -O x86_64-efi \
+        -o "${efi_mount}/EFI/BOOT/BOOTX64.EFI" \
+        --modules "normal configfile echo linux search search_fs_uuid part_msdos part_gpt fat ext2 efi_gop efi_uga" \
+        --locales "" \
+        --themes "" \
+        "boot/grub/grub.cfg=${tmp_grub_cfg}"
+
+    rm -f "${tmp_grub_cfg}"
+}
+
+install_grub_cfg() {
+    local boot_mount="$1"
+    local boot_uuid="$2"
+
+    # Make sure arguments are set
+    if [ -z "$boot_mount" ] || [ -z "$boot_uuid" ]; then
+        echo "Error: install_grub_cfg: Missing arguments"
+        echo "Usage: install_grub_cfg <boot_mount> <boot_uuid>"
+        return 1
+    fi
+
+    mkdir -p "${boot_mount}/grub"
+    cat <<EOF > "${boot_mount}/grub/grub.cfg"
+set timeout=30
+set default="0"
+
+menuentry "Whistlekube Linux" {
+    search --fs-uuid --set=root ${boot_uuid}
+    echo "Loading whistlekube kernel..."
+    linux /vmlinuz boot=live components nomodeset
+    echo "Loading whistlekube initrd..."
+    initrd /initrd.img
+}
+
+menuentry "Whistlekube Linux (recovery mode)" {
+    search --fs-uuid --set=root ${boot_uuid}
+    echo "Loading kernel (recovery mode)..."
+    linux /vmlinuz boot=live components nomodeset \
+        noapic noapm nodma nomce nolapic \
+        debug # Useful for troubleshooting live-boot
+    echo "Loading initial ramdisk (recovery mode)..."
+    initrd /initrd.img
+}
+EOF
+    
+}
+
+fi

@@ -1,0 +1,21 @@
+{
+    "cdiVersion": "0.7.0",
+    "kind": "whistlekube.com/device",
+    "devices": [
+        {
+            "name": "nbd0",
+            "containerEdits": {
+                "deviceNodes": [
+                    {
+                        "path": "/dev/nbd0",
+                        "type": "b",
+                        "major": 43,
+                        "minor": 0,
+                        "fileMode": 384,
+                        "permissions": "rwm"
+                    }
+                ]
+            }
+        }
+    ]
+}

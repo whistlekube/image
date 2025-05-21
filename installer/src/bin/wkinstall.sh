@@ -2,18 +2,16 @@
 
 set -euxo pipefail
 
-WKINSTALL_KERNEL_PATH=${WKINSTALL_KERNEL_PATH:-/run/media/live/vmlinuz}
-WKINSTALL_INITRD_PATH=${WKINSTALL_INITRD_PATH:-/run/media/live/initrd.img}
-WKINSTALL_EFI_STUB_PATH=${WKINSTALL_EFI_STUB_PATH:-/run/media/live/efi.img}
-WKINSTALL_EFI_CORE_PATH=${WKINSTALL_EFI_CORE_PATH:-/run/media/live/core.img}
+WKINSTALL_MEDIUM_PATH=${WKINSTALL_MEDIUM_PATH:-/run/live/medium}
 WKINSTALL_EFI_MNT=${WKINSTALL_EFI_MNT:-/mnt/wkinstall-efi}
 WKINSTALL_BOOT_MNT=${WKINSTALL_BOOT_MNT:-/mnt/wkinstall-boot}
 WKINSTALL_ROOT_MNT=${WKINSTALL_ROOT_MNT:-/mnt/wkinstall-root}
-LIB_DIR="lib"
+WKINSTALL_LIB_DIR=${WKINSTALL_LIB_DIR:-/usr/local/lib/wkinstall/lib}
 
-source "${LIB_DIR}/partition.sh"
+source "${WKINSTALL_LIB_DIR}/partition.sh"
+source "${WKINSTALL_LIB_DIR}/boot.sh"
 
-local disk="$1"
+disk="$1"
 
 if [ -z "$disk" ]; then
     echo "Usage: $0 <disk>"
@@ -35,27 +33,49 @@ fi
 echo "=== Partitioning disk $disk ==="
 partition_disk_efi "$disk"
 
-mkdir -p "$WHINSTALL_EFI_MNT"
-mkdir -p "$WHINSTALL_BOOT_MNT"
-mkdir -p "$WHINSTALL_ROOT_MNT"
+efi_part_dev=$(get_efi_partition "$disk")
+boot_part_dev=$(get_boot_partition_efi "$disk")
+root_part_dev=$(get_root_partition_efi "$disk")
+boot_uuid=$(get_partition_uuid "$boot_part_dev")
+
+mkdir -p "$WKINSTALL_EFI_MNT"
+mkdir -p "$WKINSTALL_BOOT_MNT"
+mkdir -p "$WKINSTALL_ROOT_MNT"
 
 echo "=== Mounting EFI partition ==="
-mount_efi_partition "$disk" "$WHINSTALL_EFI_MNT"
+mount_efi_partition "$disk" "$WKINSTALL_EFI_MNT"
 
 echo "=== Mounting boot partition ==="
-mount_boot_partition "$disk" "$WHINSTALL_BOOT_MNT"
+mount_boot_partition "$disk" "$WKINSTALL_BOOT_MNT"
 
 echo "=== Mounting root partition ==="
-mount_root_partition "$disk" "$WHINSTALL_ROOT_MNT"
+mount_root_partition "$disk" "$WKINSTALL_ROOT_MNT"
 
 echo "=== Copying files to EFI partition ==="
-cp -r "$WKINSTALL_EFI_STUB_PATH" "$WHINSTALL_EFI_MNT"/EFI/BOOT/BOOTX64.EFI
+install_efi_stub "$WKINSTALL_EFI_MNT" "$boot_uuid"
 
 echo "=== Copying files to boot partition ==="
-cp -r /build/boot/* "$WHINSTALL_BOOT_MNT"
+cp -a "${WKINSTALL_MEDIUM_PATH}/boot" "${WKINSTALL_BOOT_MNT}/boot"
+cp -a "${WKINSTALL_MEDIUM_PATH}/vmlinuz" "${WKINSTALL_BOOT_MNT}/vmlinuz"
+cp -a "${WKINSTALL_MEDIUM_PATH}/initrd.img" "${WKINSTALL_BOOT_MNT}/initrd.img"
+install_grub_cfg "${WKINSTALL_BOOT_MNT}" "${boot_uuid}"
 
 echo "=== Copying files to root partition ==="
-cp -r /build/root/* "$WHINSTALL_ROOT_MNT"
+mkdir -p "$WKINSTALL_BOOT_MNT/overlay"
+
+echo "=== EFI files ==="
+find "$WKINSTALL_EFI_MNT"
+
+echo "=== Boot files ==="
+find "$WKINSTALL_BOOT_MNT"
+
+echo "=== Root files ==="
+find "$WKINSTALL_ROOT_MNT"
 
 
+echo "=== Unmounting partitions ==="
+sync
+umount ${WKINSTALL_EFI_MNT}
+umount ${WKINSTALL_BOOT_MNT}
+umount ${WKINSTALL_ROOT_MNT}
 

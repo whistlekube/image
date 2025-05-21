@@ -63,6 +63,7 @@ ENV ROOTFS_DIR="/rootfs"
 # === Installer rootfs build ===
 # This stage builds the installer root filesystem
 FROM rootfs-builder AS installer-debstrap
+ARG OUTPUT_DIR
 ENV MMDEBSTRAP_VARIANT="essential"
 ENV MMDEBSTRAP_INCLUDE="\
     zstd,live-boot,live-config,\
@@ -76,8 +77,10 @@ RUN --security=insecure \
     echo "=== Building INSTALLER rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
     /scripts/build-rootfs.sh && \
     mkdir -p ${OUTPUT_DIR} && \
-    cp ${ROOTFS_DIR}/boot/vmlinuz-* ${OUTPUT_DIR}/vmlinuz && \
-    cp ${ROOTFS_DIR}/boot/initrd.img-* ${OUTPUT_DIR}/initrd.img
+    cp -a ${ROOTFS_DIR}/vmlinuz ${OUTPUT_DIR}/vmlinuz && \
+    cp -a ${ROOTFS_DIR}/initrd.img ${OUTPUT_DIR}/initrd.img && \
+    cp -a ${ROOTFS_DIR}/boot ${OUTPUT_DIR}/boot && \
+    find ${OUTPUT_DIR}
 
 # === Configure the installer rootfs ===
 FROM installer-debstrap AS installer-configure
@@ -268,8 +271,9 @@ ENV REPO_BINARY_DIR="${ISO_DIR}/pool/main/binary-${DEBIAN_ARCH}"
 ENV REPO_DIST_DIR="${ISO_DIR}/dists/${DEBIAN_RELEASE}/main/binary-${DEBIAN_ARCH}"
 ENV HYBRID_MBR_PATH="/usr/lib/grub/i386-pc/boot_hybrid.img"
 
-COPY --from=installer-build ${OUTPUT_DIR}/vmlinuz ${ISO_DIR}/live/vmlinuz
-COPY --from=installer-build ${OUTPUT_DIR}/initrd.img ${ISO_DIR}/live/initrd.img
+COPY --from=installer-debstrap ${OUTPUT_DIR}/boot/ ${ISO_DIR}/boot/
+COPY --from=installer-debstrap ${OUTPUT_DIR}/vmlinuz ${ISO_DIR}/vmlinuz
+COPY --from=installer-debstrap ${OUTPUT_DIR}/initrd.img ${ISO_DIR}/initrd.img
 COPY --from=installer-build ${OUTPUT_DIR}/installer.squashfs ${ISO_DIR}/live/filesystem.squashfs
 COPY --from=target-build ${OUTPUT_DIR}/rootfs.squashfs ${ISO_DIR}/install/filesystem.squashfs
 #COPY --from=initrd-build /initrd-live.img ${ISO_DIR}/live/initrd.img
@@ -325,7 +329,15 @@ FROM base-builder AS qemu-builder
 RUN <<EOFDOCKER
 set -eux
 apt-get update
-apt-get install -y --no-install-recommends qemu-system-x86-64 qemu-utils
+apt-get install -y --no-install-recommends \
+    linux-image-amd64 \
+    libguestfs-tools \
+    grub-common \
+    grub-pc-bin \
+    grub-efi-amd64-bin \
+    grub-efi-amd64-signed \
+    qemu-system-x86-64 \
+    qemu-utils
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 EOFDOCKER
@@ -334,6 +346,7 @@ ARG QEMU_IMAGE_FILENAME="${QEMU_IMAGE_PREFIX}.qcow2"
 
 FROM qemu-builder AS qemu-image-build
 ARG QEMU_IMAGE_SIZE="10G"
+COPY /installer/src/ /installer/
 WORKDIR ${OUTPUT_DIR}
 RUN qemu-img create -f qcow2 ./${QEMU_IMAGE_FILENAME} ${QEMU_IMAGE_SIZE}
 
@@ -341,12 +354,39 @@ FROM scratch AS qemu-image-artifact
 ARG OUTPUT_DIR
 COPY --from=qemu-image-build ${OUTPUT_DIR}/ /
 
+FROM qemu-image-build AS qemu-installer
+ARG QEMU_INSTALLED_IMAGE_FILENAME="${QEMU_IMAGE_PREFIX}-installed.qcow2"
+ARG NBD_DEVICE="/dev/nbd0"
+WORKDIR /build
+COPY /scripts/qemu-install.sh ./qemu-install.sh
+COPY /installer/src/bin/ /usr/local/sbin/
+COPY /installer/src/lib/ /usr/local/lib/wkinstall/lib/
+COPY --from=target-build ${OUTPUT_DIR}/rootfs.squashfs /run/live/medium/install/filesystem.squashfs
+COPY --from=installer-debstrap ${OUTPUT_DIR}/boot/ /run/live/medium/boot/
+COPY --from=installer-debstrap ${OUTPUT_DIR}/vmlinuz /run/live/medium/vmlinuz
+COPY --from=installer-debstrap ${OUTPUT_DIR}/initrd.img /run/live/medium/initrd.img
+COPY --from=qemu-image-build ${OUTPUT_DIR}/${QEMU_IMAGE_FILENAME} ./${QEMU_IMAGE_FILENAME}
+
+CMD ["/bin/bash", "-c", "./qemu-install.sh"]
+
+
 FROM qemu-image-build AS qemu-image-install
 ARG QEMU_INSTALLED_IMAGE_FILENAME="${QEMU_IMAGE_PREFIX}-installed.qcow2"
 ARG QEMU_NBD_DEVICE="/dev/nbd0"
-WORKDIR ${OUTPUT_DIR}
+WORKDIR /build
 COPY /installer/src/ .
-COPY --from=qemu-image-build ${OUTPUT_DIR}/${QEMU_IMAGE_FILENAME} ./${QEMU_INSTALLED_IMAGE_FILENAME}
-RUN qemu-nbd --connect=${QEMU_NBD_DEVICE} ${QEMU_IMAGE_FILENAME} && \
-    ./bin/wkinstall.sh ${QEMU_NBD_DEVICE}
+COPY --from=qemu-image-build ${OUTPUT_DIR}/${QEMU_IMAGE_FILENAME} ${OUTPUT_DIR}/${QEMU_INSTALLED_IMAGE_FILENAME}
+RUN --security=insecure <<EOFDOCKER
+set -eux
+qemu-
+export LIBGUESTFS_DEBUG=1
+export LIBGUESTFS_TRACE=1
+guestfish --rw -a ${OUTPUT_DIR}/${QEMU_INSTALLED_IMAGE_FILENAME} <<EOFFISH
+    run
+    list-devices
+    # 'run' command starts the appliance VM and makes devices available
+    sh "/host/build/bin/wkinstall.sh /dev/sda"
+EOFFISH
+
+EOFDOCKER
 

@@ -44,8 +44,8 @@ DOCKER_IMAGE_PREFIX ?= whistlekube-installer
 DOCKER_IMAGE_NAME ?= ${DOCKER_IMAGE_PREFIX}-${BUILD_TARGET}
 DOCKER_BUILDER_NAME ?= ${DOCKER_IMAGE_PREFIX}-builder
 # The name of the QEMU image to build
-QEMU_IMAGE_NAME ?= whistlekube-disk
-QEMU_IMAGE_PATH ?= $(OUTPUT_DIR)/$(QEMU_IMAGE_NAME).qcow2
+QEMU_IMAGE_PREFIX ?= disk
+QEMU_IMAGE_PATH ?= $(OUTPUT_DIR)/${QEMU_IMAGE_PREFIX}.qcow2
 # The size of the QEMU image to build
 QEMU_IMAGE_SIZE ?= 10G
 # The path to the OVMF code file
@@ -189,7 +189,12 @@ qemu-init:
 
 # Partitions the disk and runs the whistlekube installer
 qemu-install:
-	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio -cdrom $(OUTPUT_DIR)/$(ISO_FILENAME) -boot d
+	@$(MAKE) build DOCKER_IMAGE_NAME=whistlekube-qemu-installer BUILD_TARGET=qemu-installer $(MAKEFLAGS)
+	docker run --rm --privileged \
+		--cap-add=SYS_ADMIN --device /dev/nbd0 \
+		-v /dev:/dev \
+		-v $(OUTPUT_DIR):/output \
+		whistlekube-qemu-installer
 
 # Run a QEMU instance booting from the installer ISO (BIOS)
 qemu-iso-bios:

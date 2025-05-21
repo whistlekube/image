@@ -41,19 +41,24 @@ get_partition_by_number() {
 }
 
 get_efi_partition() {
-    return get_partition_by_number "$1" 1
+    get_partition_by_number "$1" 1
 }
 
 get_boot_partition_efi() {
-    return get_partition_by_number "$1" 2
+    get_partition_by_number "$1" 2
 }
 
 get_root_partition_efi() {
-    return get_partition_by_number "$1" 3
+    get_partition_by_number "$1" 3
 }
 
 get_boot_partition_mbr() {
-    return get_partition_by_number "$1" 1
+    get_partition_by_number "$1" 1
+}
+
+get_partition_uuid() {
+    local part_dev="$1"
+    blkid -s UUID -o value "$part_dev"
 }
 
 partition_disk_efi() {
@@ -64,7 +69,7 @@ partition_disk_efi() {
     local esp_end=$((${esp_size_mb} + 1))
     local boot_end=$((${esp_end} + ${boot_size_mb}))
 
-    parted -s "$disk" mklabel gpt
+    parted -s "$disk" mklabel gpt || echo "Warning: Failed to create GPT label on $disk"
     parted -s "$disk" mkpart primary fat32 1MiB $esp_end
     parted -s "$disk" set 1 esp on
     parted -s "$disk" mkpart primary ext4 $esp_end $boot_end
@@ -88,24 +93,15 @@ partition_disk_efi() {
 }
 
 mount_efi_partition() {
-    local disk="$1"
-    local mount_point="$2"
-    local efi_dev=$(get_efi_partition "$disk")
-    mount "$efi_dev" "$mount_point"
+    mount $(get_efi_partition "$1") "$2"
 }
 
 mount_boot_partition() {
-    local disk="$1"
-    local mount_point="$2"
-    local boot_dev=$(get_boot_partition_efi "$disk")
-    mount "$boot_dev" "$mount_point"
+    mount $(get_boot_partition_efi "$1") "$2"
 }
 
 mount_root_partition() {
-    local disk="$1"
-    local mount_point="$2"
-    local root_dev=$(get_root_partition_efi "$disk")
-    mount "$root_dev" "$mount_point"
+    mount $(get_root_partition_efi "$1") "$2"
 }
 
 
