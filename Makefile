@@ -217,6 +217,8 @@ qemu-iso-uefi:
 	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio \
 		-cdrom $(OUTPUT_DIR)/$(ISO_FILENAME) \
 		-boot d \
+		-enable-kvm \
+		-cpu host \
 		-serial stdio \
 		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE_PATH) \
 		-drive if=pflash,format=raw,file=$(OUTPUT_DIR)/OVMF_VARS.fd
@@ -230,6 +232,8 @@ qemu-run: qemu-run-uefi
 qemu-run-uefi:
 	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio \
 		-boot c \
+		-enable-kvm \
+		-cpu host \
 		-serial stdio \
 		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE_PATH) \
 		-drive if=pflash,format=raw,file=$(OUTPUT_DIR)/OVMF_VARS.fd

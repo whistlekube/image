@@ -7,7 +7,10 @@ After=network-online.target
 Type=notify
 ExecStartPre=-/sbin/modprobe br_netfilter
 ExecStartPre=-/sbin/modprobe overlay
-ExecStart=/usr/local/bin/k3s server --config /etc/rancher/k3s/config.yaml
+ExecStart=/usr/local/bin/k3s server \
+    --config /etc/rancher/k3s/config.yaml \
+    --node-ip=127.0.0.1 \
+    --bind-address=0.0.0.0
 KillMode=process
 Delegate=yes
 LimitNOFILE=infinity

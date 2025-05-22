@@ -70,10 +70,10 @@ partition_disk_efi() {
     local boot_end=$((${esp_end} + ${boot_size_mb}))
 
     parted -s "$disk" mklabel gpt || echo "Warning: Failed to create GPT label on $disk"
-    parted -s "$disk" mkpart primary fat32 1MiB $esp_end
+    parted -s "$disk" mkpart primary fat32 1MiB ${esp_end}MiB
     parted -s "$disk" set 1 esp on
-    parted -s "$disk" mkpart primary ext4 $esp_end $boot_end
-    parted -s "$disk" mkpart primary ext4 $boot_end 100%
+    parted -s "$disk" mkpart primary ext4 ${esp_end}MiB ${boot_end}MiB
+    parted -s "$disk" mkpart primary ext4 ${boot_end}MiB 100%
 
     # Wait for udev to settle and recognize the new partitions
     sleep 1

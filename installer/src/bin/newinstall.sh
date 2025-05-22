@@ -29,14 +29,6 @@ if [ ! -b "$disk" ]; then
     exit 1
 fi
 
-install_boot_files() {
-    cp -a "${WKINSTALL_MEDIUM_PATH}/boot/*" "${WKINSTALL_BOOT_MNT}/slot_a"
-    cp -a "${WKINSTALL_MEDIUM_PATH}/boot/*" "${WKINSTALL_BOOT_MNT}/slot_b"
-    cp -a "${WKINSTALL_MEDIUM_PATH}/install/filesystem.squashfs" "${WKINSTALL_BOOT_MNT}/slot_a/filesystem.squashfs"
-    cp -a "${WKINSTALL_MEDIUM_PATH}/install/filesystem.squashfs" "${WKINSTALL_BOOT_MNT}/slot_b/filesystem.squashfs"
-    
-}
-
 ## Ask for confirmation
 #dialog --title "Confirm erase disk" --yesno "This will erase all data on $disk. Continue?" 8 60
 #if [ $? -ne 0 ]; then
@@ -69,19 +61,16 @@ echo "=== Copying files to EFI partition ==="
 install_efi_stub "$WKINSTALL_EFI_MNT" "$boot_uuid"
 
 echo "=== Copying files to boot partition ==="
+cp -a "${WKINSTALL_MEDIUM_PATH}/boot" "${WKINSTALL_BOOT_MNT}/slot_a"
+cp -a "${WKINSTALL_MEDIUM_PATH}/boot" "${WKINSTALL_BOOT_MNT}/slot_b"
 mkdir "${WKINSTALL_BOOT_MNT}/grub"
 echo "current=a" >> "${WKINSTALL_BOOT_MNT}/grub/abstate.conf"
 install_grub_cfg "${WKINSTALL_BOOT_MNT}" "${boot_uuid}"
-install_boot_files
+cp -a "${WKINSTALL_MEDIUM_PATH}/install/filesystem.squashfs" "${WKINSTALL_BOOT_MNT}/slot_a/filesystem.squashfs"
+cp -a "${WKINSTALL_MEDIUM_PATH}/install/filesystem.squashfs" "${WKINSTALL_BOOT_MNT}/slot_b/filesystem.squashfs"
 
 echo "=== Copying files to root partition ==="
-mkdir -p "$WKINSTALL_ROOT_MNT/overlay"
-
-# Write the persistence.conf file
-cat <<EOF > "${WKINSTALL_ROOT_MNT}/persistence.conf"
-/var
-/etc
-EOF
+mkdir -p "$WKINSTALL_BOOT_MNT/overlay"
 
 echo "=== EFI files ==="
 find "$WKINSTALL_EFI_MNT"

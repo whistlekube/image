@@ -65,20 +65,15 @@ FROM rootfs-builder AS installer-debstrap
 ARG OUTPUT_DIR
 ENV MMDEBSTRAP_VARIANT="essential"
 ENV MMDEBSTRAP_INCLUDE="\
-    zstd,live-boot,grub-common,grub-pc-bin,grub-efi-amd64-bin,grub-efi-amd64-signed,\
-    linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,\
-    systemd-sysv,bash,coreutils,\
-    dialog,squashfs-tools,parted,gdisk,e2fsprogs,\
-    lvm2,cryptsetup,dosfstools,ca-certificates"
+zstd,live-boot,grub-common,grub-pc-bin,grub-efi-amd64-bin,grub-efi-amd64-signed,\
+linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,\
+systemd-sysv,bash,coreutils,\
+dialog,squashfs-tools,parted,gdisk,e2fsprogs,\
+lvm2,cryptsetup,dosfstools,ca-certificates"
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \
     echo "=== Building INSTALLER rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
-    /scripts/build-rootfs.sh && \
-    mkdir -p ${OUTPUT_DIR} && \
-    cp -a ${ROOTFS_DIR}/boot ${OUTPUT_DIR}/boot && \
-    mv ${OUTPUT_DIR}/boot/vmlinuz-* ${OUTPUT_DIR}/boot/vmlinuz && \
-    mv ${OUTPUT_DIR}/boot/initrd.img-* ${OUTPUT_DIR}/boot/initrd.img && \
-    find ${OUTPUT_DIR}
+    /scripts/build-rootfs.sh
 
 # === Configure the installer rootfs ===
 FROM installer-debstrap AS installer-configure
@@ -91,9 +86,20 @@ COPY /scripts/umount-chroot.sh /scripts/umount-chroot.sh
 RUN --security=insecure <<EOFDOCKER
 set -eux
 echo "=== Configuring INSTALLER rootfs ==="
+
+# Run the chroot script
 /scripts/mount-chroot.sh
 chroot ${ROOTFS_DIR} /configure-chroot.sh
 /scripts/umount-chroot.sh
+
+# Copy the boot files to the output directory
+mkdir -p ${OUTPUT_DIR}
+cp -r ${ROOTFS_DIR}/boot ${OUTPUT_DIR}/boot
+mv ${OUTPUT_DIR}/boot/vmlinuz-* ${OUTPUT_DIR}/boot/vmlinuz && \
+mv ${OUTPUT_DIR}/boot/initrd.img-* ${OUTPUT_DIR}/boot/initrd.img && \
+
+# Final cleanup of the rootfs
+rm -rf ${ROOTFS_DIR}/boot/*
 rm -f ${ROOTFS_DIR}/configure-chroot.sh
 EOFDOCKER
 
@@ -140,6 +146,7 @@ echo "=== Configuring TARGET rootfs ==="
 /scripts/mount-chroot.sh
 chroot ${ROOTFS_DIR} /configure-chroot.sh
 /scripts/umount-chroot.sh
+# Final cleanup of the rootfs
 rm -f ${ROOTFS_DIR}/configure-chroot.sh
 EOFDOCKER
 
@@ -154,23 +161,6 @@ RUN echo "=== Squashing TARGET filesystem ===" && \
 # === Target rootfs artifact ===
 FROM scratch AS target-artifact
 COPY --from=target-build /output/ /
-
-## FROM rootfs-builder AS boot-builder
-## 
-## WORKDIR /build
-## ENV ROOTFS_DIR="/rootfs"
-## ENV MMDEBSTRAP_VARIANT="apt"
-## #ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
-## ENV MMDEBSTRAP_INCLUDE="xz-utils,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,systemd-sysv,systemd-boot,live-boot"
-## COPY /debstrap/target-hooks/ /hooks/
-## COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
-## 
-## RUN --security=insecure \
-##     echo "=== Building TARGET rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
-##     /scripts/build-rootfs.sh
-## 
-## RUN echo "=== Squashing target filesystem ===" && \
-##     mksquashfs /rootfs ${OUTPUT_DIR}/rootfs.squashfs -comp xz -no-xattrs -no-fragments -wildcards -b 1M
 
 
 # === EFI build ===
@@ -269,7 +259,7 @@ ENV REPO_BINARY_DIR="${ISO_DIR}/pool/main/binary-${DEBIAN_ARCH}"
 ENV REPO_DIST_DIR="${ISO_DIR}/dists/${DEBIAN_RELEASE}/main/binary-${DEBIAN_ARCH}"
 ENV HYBRID_MBR_PATH="/usr/lib/grub/i386-pc/boot_hybrid.img"
 
-COPY --from=installer-debstrap ${OUTPUT_DIR}/boot/ ${ISO_DIR}/boot/
+COPY --from=installer-build ${OUTPUT_DIR}/boot/ ${ISO_DIR}/boot/
 COPY --from=installer-build ${OUTPUT_DIR}/installer.squashfs ${ISO_DIR}/live/filesystem.squashfs
 COPY --from=target-build ${OUTPUT_DIR}/rootfs.squashfs ${ISO_DIR}/install/filesystem.squashfs
 #COPY --from=initrd-build /initrd-live.img ${ISO_DIR}/live/initrd.img
@@ -336,6 +326,8 @@ apt-get install -y --no-install-recommends \
     parted \
     e2fsprogs \
     dosfstools \
+    systemd-boot-efi \
+    systemd-boot-tools \
     grub-common \
     grub-pc-bin \
     grub-efi-amd64-bin \
@@ -370,5 +362,21 @@ COPY /installer/src/lib/ /usr/local/lib/wkinstall/lib/
 # Copy the installer files to the image, mirroring the iso layout
 COPY --from=target-build ${OUTPUT_DIR}/rootfs.squashfs /run/live/medium/install/filesystem.squashfs
 COPY --from=installer-debstrap ${OUTPUT_DIR}/boot/ /run/live/medium/boot/
+
+CMD ["/bin/bash", "-c", "./qemu-install.sh"]
+
+# === Install a systemd boot system ===
+FROM qemu-image-build AS qemu-systemd-installer
+ARG QEMU_INSTALLED_IMAGE_FILENAME="${QEMU_IMAGE_PREFIX}-systemd.qcow2"
+ARG NBD_DEVICE="/dev/nbd0"
+WORKDIR /build
+COPY /scripts/qemu-install.sh ./qemu-install.sh
+COPY --from=qemu-image-build ${OUTPUT_DIR}/${QEMU_IMAGE_FILENAME} ./${QEMU_IMAGE_FILENAME}
+# Install the installer
+COPY /installer/src/bin/newinstall.sh /usr/local/sbin/wkinstall.sh
+COPY /installer/src/lib/ /usr/local/lib/wkinstall/lib/
+# Copy the installer files to the image, mirroring the iso layout
+COPY --from=target-build ${OUTPUT_DIR}/rootfs.squashfs /run/live/medium/install/filesystem.squashfs
+COPY --from=installer-build ${OUTPUT_DIR}/boot/ /run/live/medium/boot/
 
 CMD ["/bin/bash", "-c", "./qemu-install.sh"]

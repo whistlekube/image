@@ -10,11 +10,11 @@ DEBIAN_RELEASE=${DEBIAN_RELEASE:-trixie}
 ROOTFS_DIR=${ROOTFS_DIR:-$PWD/rootfs}
 MMDEBSTRAP_VARIANT=${MMDEBSTRAP_VARIANT:-essential}
 MMDEBSTRAP_INCLUDE=${MMDEBSTRAP_INCLUDE:-"${SYSTEMD_PACKAGES} ${LINUX_PACKAGES}"}
-EXTRA_APT_OPTIONS=${EXTRA_APT_OPTIONS:-}
+MMDEBSTRAP_EXTRA_OPTIONS=${MMDEBSTRAP_EXTRA_OPTIONS:-}
 
 # Debug mode
 if [ "${WKINSTALL_DEBUG:-false}" = "true" ]; then
-  EXTRA_APT_OPTIONS="${EXTRA_APT_OPTIONS} --verbose"
+  MMDEBSTRAP_EXTRA_OPTIONS="${MMDEBSTRAP_EXTRA_OPTIONS} --verbose"
 fi
 
 # Create minimal Debian rootfs with mmdebstrap
@@ -28,7 +28,7 @@ mmdebstrap \
   --aptopt='APT::Install-Suggests "false"' \
   --aptopt='Acquire::Languages { "environment"; "en"; }' \
   --aptopt='Acquire::Languages "none"' \
-  $EXTRA_APT_OPTIONS \
+  $MMDEBSTRAP_EXTRA_OPTIONS \
   --dpkgopt=path-exclude=/usr/share/man/* \
   --dpkgopt=path-exclude=/usr/share/bug/* \
   --dpkgopt=path-exclude=/usr/share/info/* \

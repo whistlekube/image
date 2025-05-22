@@ -9,8 +9,6 @@ rootfs="$1"
 
 set -euxo pipefail
 
-rm -f ${rootfs}/boot/*
-
 # Systemd output on tty4
 echo "TTYPath=/dev/tty4" >> ${rootfs}/etc/systemd/journald.conf
 
