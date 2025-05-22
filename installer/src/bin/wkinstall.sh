@@ -79,8 +79,9 @@ mkdir -p "$WKINSTALL_ROOT_MNT/overlay"
 
 # Write the persistence.conf file
 cat <<EOF > "${WKINSTALL_ROOT_MNT}/persistence.conf"
-/var
-/etc
+/var/lib/rancher source=rancher/lib
+/var union
+/etc union
 EOF
 
 echo "=== EFI files ==="
