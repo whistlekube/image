@@ -359,9 +359,9 @@ COPY --from=qemu-image-build ${OUTPUT_DIR}/${QEMU_IMAGE_FILENAME} ./${QEMU_IMAGE
 # Install the installer
 COPY /installer/src/bin/ /usr/local/sbin/
 COPY /installer/src/lib/ /usr/local/lib/wkinstall/lib/
-# Copy the installer files to the image, mirroring the iso layout
+# Copy the installer files to the image
 COPY --from=target-build ${OUTPUT_DIR}/rootfs.squashfs /run/live/medium/install/filesystem.squashfs
-COPY --from=installer-debstrap ${OUTPUT_DIR}/boot/ /run/live/medium/boot/
+COPY --from=installer-build ${OUTPUT_DIR}/boot/ /run/live/medium/boot/
 
 CMD ["/bin/bash", "-c", "./qemu-install.sh"]
 

@@ -62,7 +62,8 @@ set default="0"
 menuentry "Whistlekube Linux" {
     search --fs-uuid --set=root ${boot_uuid}
     echo "Loading whistlekube kernel..."
-    linux /slot_a/vmlinuz boot=live components nomodeset debug live-media-path=/slot_a
+    linux /slot_a/vmlinuz boot=live components nomodeset debug console=ttyS0,115200 \\
+        live-media-path=/slot_a persistence persistence-storage=filesystem
     echo "Loading whistlekube initrd..."
     initrd /slot_a/initrd.img
 }

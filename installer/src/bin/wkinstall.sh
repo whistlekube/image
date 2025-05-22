@@ -30,11 +30,11 @@ if [ ! -b "$disk" ]; then
 fi
 
 install_boot_files() {
-    cp -a "${WKINSTALL_MEDIUM_PATH}/boot/*" "${WKINSTALL_BOOT_MNT}/slot_a"
-    cp -a "${WKINSTALL_MEDIUM_PATH}/boot/*" "${WKINSTALL_BOOT_MNT}/slot_b"
+    find "${WKINSTALL_MEDIUM_PATH}"
+    cp -a "${WKINSTALL_MEDIUM_PATH}/boot" "${WKINSTALL_BOOT_MNT}/slot_a"
+    cp -a "${WKINSTALL_MEDIUM_PATH}/boot" "${WKINSTALL_BOOT_MNT}/slot_b"
     cp -a "${WKINSTALL_MEDIUM_PATH}/install/filesystem.squashfs" "${WKINSTALL_BOOT_MNT}/slot_a/filesystem.squashfs"
     cp -a "${WKINSTALL_MEDIUM_PATH}/install/filesystem.squashfs" "${WKINSTALL_BOOT_MNT}/slot_b/filesystem.squashfs"
-    
 }
 
 ## Ask for confirmation

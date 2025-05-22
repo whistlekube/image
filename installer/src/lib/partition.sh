@@ -89,6 +89,7 @@ partition_disk_efi() {
     mkfs.ext4 -F "$boot_dev"
     echo "Boot partition formatted: $boot_dev"
     mkfs.ext4 -F "$root_dev"
+    e2label "$root_dev" persistence
     echo "Root partition formatted: $root_dev"
 }
 
