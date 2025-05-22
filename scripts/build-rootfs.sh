@@ -41,5 +41,5 @@ mmdebstrap \
   --dpkgopt=path-exclude=/usr/share/zsh/* \
   "$DEBIAN_RELEASE" \
   $ROOTFS_DIR \
-  "https://deb.debian.org/debian"
+  "$@"
 

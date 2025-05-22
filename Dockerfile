@@ -25,23 +25,42 @@ ENV DEBIAN_ARCH="${TARGETARCH}"
 ENV DEBIAN_FRONTEND=noninteractive
 ENV DEBCONF_NONINTERACTIVE_SEEN=true
 
-# === Download k3s ===
-FROM base-builder AS k3s-download
-
-ARG K3S_VERSION
-ARG DEBIAN_ARCH
-
+FROM base-builder AS download-tools
 # Install curl
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl openssl ca-certificates && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# === Download k3s ===
+FROM download-tools AS k3s-download
+
+ARG K3S_VERSION
+ARG DEBIAN_ARCH
+
 RUN mkdir -p ${OUTPUT_DIR} && \
     curl -fSL -o ${OUTPUT_DIR}/k3s "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s" && \
     curl -fSL -o ${OUTPUT_DIR}/k3s-airgap-images-${DEBIAN_ARCH}.tar.gz \
     "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-${DEBIAN_ARCH}.tar.gz" && \
     chmod +x ${OUTPUT_DIR}/k3s
+
+# === Download real kubernetes ===
+FROM download-tools AS kubernetes-download
+
+ARG KUBERNETES_VERSION=v1.33.0
+ARG DEBIAN_ARCH
+
+RUN mkdir -p ${OUTPUT_DIR} && \
+    curl -fSL -o ${OUTPUT_DIR}/bin/kube-apiserver "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${DEBIAN_ARCH}/kube-apiserver" && \
+    curl -fSL -o ${OUTPUT_DIR}/bin/kube-controller-manager "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${DEBIAN_ARCH}/kube-controller-manager" && \
+    curl -fSL -o ${OUTPUT_DIR}/bin/kube-scheduler "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${DEBIAN_ARCH}/kube-scheduler" && \
+    curl -fSL -o ${OUTPUT_DIR}/bin/kubelet "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${DEBIAN_ARCH}/kubelet" && \
+    curl -fSL -o ${OUTPUT_DIR}/bin/kubectl "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${DEBIAN_ARCH}/kubectl" && \
+             ${OUTPUT_DIR}/bin/kube-apiserver \
+             ${OUTPUT_DIR}/bin/kube-controller-manager \
+             ${OUTPUT_DIR}/bin/kube-scheduler \
+             ${OUTPUT_DIR}/bin/kubelet \
+             ${OUTPUT_DIR}/bin/kubectl
 
 # === Base rootfs builder with tools installed ===
 # This stage installs mmdebstrap and squashfs-tools for building the root filesystems
@@ -73,7 +92,7 @@ lvm2,cryptsetup,dosfstools,ca-certificates"
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \
     echo "=== Building INSTALLER rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
-    /scripts/build-rootfs.sh
+    /scripts/build-rootfs.sh ${DEBIAN_MIRROR}
 
 # === Configure the installer rootfs ===
 FROM installer-debstrap AS installer-configure
@@ -130,11 +149,13 @@ COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \
     echo "=== Building TARGET rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
     mkdir -p ${OUTPUT_DIR} && \
-    /scripts/build-rootfs.sh
+    /scripts/build-rootfs.sh ${DEBIAN_MIRROR}
 
 # === Configure the target rootfs ===
 FROM target-debstrap AS target-configure
-COPY /target/overlay/ ${ROOTFS_DIR}/
+COPY /target/overlay-base/ ${ROOTFS_DIR}/
+COPY /target/overlay-whistle/ ${ROOTFS_DIR}/
+COPY /target/overlay-k3s/ ${ROOTFS_DIR}/
 COPY --from=k3s-download ${OUTPUT_DIR}/k3s ${ROOTFS_DIR}/usr/local/bin/k3s
 #COPY --from=k3s-download ${OUTPUT_DIR}/k3s-airgap-images-${DEBIAN_ARCH}.tar.gz ${ROOTFS_DIR}/var/lib/rancher/k3s/agent/images/
 COPY /target/configure-chroot.sh ${ROOTFS_DIR}/configure-chroot.sh
@@ -162,6 +183,55 @@ RUN echo "=== Squashing TARGET filesystem ===" && \
 FROM scratch AS target-artifact
 COPY --from=target-build /output/ /
 
+# === K8s rootfs build ===
+# This stage builds the kubernetes root filesystem
+FROM rootfs-builder AS kubernetes-debstrap
+WORKDIR /build
+ENV ROOTFS_DIR="/rootfs"
+ENV MMDEBSTRAP_VARIANT="apt"
+#ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
+ENV MMDEBSTRAP_INCLUDE="zstd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,\
+    systemd-sysv,passwd,util-linux,coreutils,bash,login,dbus,ca-certificates,\
+    iproute2,procps,less,vim-tiny,containernetworking-plugins,containerd.io"
+ENV DOCKER_APT_SOURCE="deb [arch=${DEBIAN_ARCH} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian ${DEBIAN_RELEASE} stable"
+#COPY /boot/ /config/boot/
+COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
+RUN --security=insecure \
+    echo "=== Building TARGET rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
+    mkdir -p ${OUTPUT_DIR} && \
+    /scripts/build-rootfs.sh "${DEBIAN_MIRROR}" "${DOCKER_APT_SOURCE}"
+
+# === Configure the kubernetes rootfs ===
+FROM target-debstrap AS kubernetes-configure
+COPY /target/overlay-base/ ${ROOTFS_DIR}/
+COPY /target/overlay-whistle/ ${ROOTFS_DIR}/
+COPY /target/overlay-kubernetes/ ${ROOTFS_DIR}/
+COPY --from=kubernetes-download ${OUTPUT_DIR}/bin/ ${ROOTFS_DIR}/usr/local/bin/
+COPY /target/configure-chroot.sh ${ROOTFS_DIR}/configure-chroot.sh
+COPY /scripts/mount-chroot.sh /scripts/mount-chroot.sh
+COPY /scripts/umount-chroot.sh /scripts/umount-chroot.sh
+RUN --security=insecure <<EOFDOCKER
+set -eux
+echo "=== Configuring KUBERNETES rootfs ==="
+/scripts/mount-chroot.sh
+chroot ${ROOTFS_DIR} /configure-chroot.sh
+/scripts/umount-chroot.sh
+# Final cleanup of the rootfs
+rm -f ${ROOTFS_DIR}/configure-chroot.sh
+EOFDOCKER
+
+# === Build the kubernetes squashfs ===
+FROM kubernetes-configure AS kubernetes-build
+RUN echo "=== Squashing KUBERNETES filesystem ===" && \
+    mkdir -p ${OUTPUT_DIR} && \
+    mksquashfs /rootfs ${OUTPUT_DIR}/rootfs.squashfs -comp zstd -no-xattrs -no-fragments -wildcards -b 1M && \
+    echo "=== Built KUBERNETES filesystem ===" && \
+    ls -lh ${OUTPUT_DIR}
+
+# === K8s rootfs artifact ===
+FROM scratch AS kubernetes-artifact
+COPY --from=kubernetes-build /output/ /
+
 
 # === EFI build ===
 # This stage builds the EFI partition image
@@ -170,8 +240,6 @@ FROM base-builder AS efi-build
 ARG EFI_DIR="/efi"
 ARG EFI_TARGET_MOUNT_POINT="/efimount-target"
 ARG EFI_MOUNT_POINT="/efimount"
-
-WORKDIR /build
 
 RUN <<EOFDOCKER
 set -eux
@@ -230,6 +298,54 @@ EOFDOCKER
 FROM scratch AS efi-artifact
 ARG OUTPUT_DIR
 COPY --from=efi-build ${OUTPUT_DIR} /
+
+
+## # === Systemd boot build ===
+## FROM base-builder AS systemd-boot-tools
+## RUN <<EOFDOCKER
+## set -eux
+## apt-get update
+## apt-get install -y --no-install-recommends \
+##     dosfstools \
+##     systemd-boot \
+##     systemd-boot-efi
+## apt-get clean
+## rm -rf /var/lib/apt/lists/*
+## EOFDOCKER
+## 
+## 
+## FROM systemd-boot-tools AS systemd-boot-build
+## RUN <<EOFDOCKER
+## set -eux
+## mkdir -p ${OUTPUT_DIR}
+## 
+## # Create a new EFI filesystem image
+## dd if=/dev/zero of="${OUTPUT_DIR}/efi.img" bs=1M count=20
+## mkdir -p "${EFI_MOUNT_POINT}"
+## mkfs.fat -F 12 -n "UEFI_BOOT" "${OUTPUT_DIR}/efi.img"
+## # Mount the EFI filesystem image
+## mount -o loop "${OUTPUT_DIR}/efi.img" "${EFI_MOUNT_POINT}"
+## #cp -r /efi/* "${EFI_MOUNT_POINT}"
+## #find "${EFI_MOUNT_POINT}"
+## # Copy the EFI files to the EFI filesystem image
+## grub-mkstandalone \
+##     -O x86_64-efi \
+##     -o "${OUTPUT_DIR}/grub.efi" \
+##     --modules "iso9660 normal configfile echo linux search search_label part_msdos part_gpt fat ext2 efi_gop efi_uga all_video font" \
+##     --locales "" \
+##     --themes "" \
+##     "/boot/grub/grub.cfg=/config/grub.cfg"
+## # Copy the grub.efi to the EFI filesystem image
+## mkdir -p "${EFI_MOUNT_POINT}/EFI/BOOT"
+## cp "${OUTPUT_DIR}/grub.efi" "${EFI_MOUNT_POINT}/EFI/BOOT/BOOTX64.EFI"
+## # Unmount the EFI filesystem image
+## umount "${EFI_MOUNT_POINT}"
+## 
+## 
+## EOFDOCKER
+
+
+
 
 # === ISO build ===
 # This stage builds the grub images and the final bootable ISO

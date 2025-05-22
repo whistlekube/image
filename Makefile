@@ -214,7 +214,7 @@ qemu-iso-bios:
 # Run a QEMU instance booting from the installer ISO (UEFI)
 qemu-iso: qemu-iso-uefi
 qemu-iso-uefi:
-	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio \
+	qemu-system-x86_64 -m 2G -smp 4 -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio \
 		-cdrom $(OUTPUT_DIR)/$(ISO_FILENAME) \
 		-boot d \
 		-enable-kvm \
@@ -225,12 +225,12 @@ qemu-iso-uefi:
 
 # Run a QEMU instance on the target filesystem
 qemu-run-bios:
-	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio -boot c
+	qemu-system-x86_64 -m 2G -smp 4 -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio -boot c
 
 # Run a QEMU instance on the target filesystem
 qemu-run: qemu-run-uefi
 qemu-run-uefi:
-	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio \
+	qemu-system-x86_64 -m 2G -smp 4 -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio \
 		-boot c \
 		-enable-kvm \
 		-cpu host \
