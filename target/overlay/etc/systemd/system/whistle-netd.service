@@ -1,0 +1,13 @@
+[Unit]
+Description=Whistlekube network configuration
+Wants=network.target
+Before=network-online.target
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/whistle-netd
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

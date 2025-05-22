@@ -124,7 +124,7 @@ ENV MMDEBSTRAP_VARIANT="apt"
 #ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
 ENV MMDEBSTRAP_INCLUDE="zstd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,\
     systemd-sysv,passwd,util-linux,coreutils,bash,login,dbus,ca-certificates,\
-    iproute2,procps,less,vim-tiny"
+    iproute2,procps,less,vim-tiny,containernetworking-plugins"
 #COPY /boot/ /config/boot/
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \
