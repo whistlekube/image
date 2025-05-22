@@ -207,6 +207,15 @@ qemu-install:
 		-v $(OUTPUT_DIR):/output \
 		whistlekube-qemu-installer
 
+# Partitions the disk and runs the whistlekube installer
+qemu-install-vanilla:
+	@$(MAKE) build DOCKER_IMAGE_NAME=whistlekube-qemu-vanilla-installer BUILD_TARGET=qemu-vanilla-installer $(MAKEFLAGS)
+	docker run --rm --privileged \
+		--cap-add=SYS_ADMIN --device /dev/nbd0 \
+		-v /dev:/dev \
+		-v $(OUTPUT_DIR):/output \
+		whistlekube-qemu-vanilla-installer
+
 # Run a QEMU instance booting from the installer ISO (BIOS)
 qemu-iso-bios:
 	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio -cdrom $(OUTPUT_DIR)/$(ISO_FILENAME) -boot d
@@ -234,6 +243,7 @@ qemu-run-uefi:
 		-boot c \
 		-enable-kvm \
 		-cpu host \
+		-netdev user,id=net0 -device e1000,netdev=net0 \
 		-serial stdio \
 		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE_PATH) \
 		-drive if=pflash,format=raw,file=$(OUTPUT_DIR)/OVMF_VARS.fd

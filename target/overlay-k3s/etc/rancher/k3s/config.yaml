@@ -1,14 +1,12 @@
 # Server configuration
 write-kubeconfig-mode: "0644"
 tls-san:
-  - server-hostname-or-ip
-# For airgap installation
-disable-cloud-controller: true
+  - whistlekube.local
 
 # Disable addons we don't need
 disable:
-  - traefik
-  - servicelb
+#  - traefik
+#  - servicelb
   - coredns
   - local-storage
   - metrics-server
