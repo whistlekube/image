@@ -72,7 +72,7 @@ EOF
 title Whistlekube Linux
 linux /EFI/Linux/vmlinuz
 initrd /EFI/Linux/initrd.img
-options root=live:UUID=${boot_uuid} rd.debug rd.live.debug rd.live.image rd.live.overlay.overlayfs=1 rd.live.overlay=UUID=${root_uuid}:/LiveOS/overlay console=tty0, console=ttyS0,115200
+options root=UUID=${boot_uuid} boot=live debug live-media-path=/slot_a persistence persistence-storage=filesystem console=tty0, console=ttyS0,115200
 EOF
     cat <<EOF > "${efi_mount}/loader/entries/whistlekube-recovery.conf"
 title Whistlekube Linux (recovery mode)

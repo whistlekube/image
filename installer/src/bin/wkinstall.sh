@@ -76,23 +76,15 @@ echo "=== Copying files to boot partition ==="
 install_systemd_boot "$WKINSTALL_EFI_MNT" "$boot_uuid" "$root_uuid"
 mkdir -p "${WKINSTALL_BOOT_MNT}/LiveOS"
 cp -a "${WKINSTALL_MEDIUM_PATH}/install/filesystem.squashfs" "${WKINSTALL_BOOT_MNT}/LiveOS/squashfs.img"
+install_boot_files
 
 echo "=== Copying files to root partition ==="
-mkdir -p "$WKINSTALL_ROOT_MNT/LiveOS/overlay"
-mkdir -p "${WKINSTALL_ROOT_MNT}/LiveOS/ovlwork"
-mkdir -p "${WKINSTALL_ROOT_MNT}/LiveOS/overlay/lowerdir"
-mkdir -p "${WKINSTALL_ROOT_MNT}/LiveOS/overlay/upperdir"
-mkdir -p "${WKINSTALL_ROOT_MNT}/LiveOS/overlay/upper"
-mkdir -p "${WKINSTALL_ROOT_MNT}/LiveOS/overlay/work"
-mkdir -p "${WKINSTALL_ROOT_MNT}/LiveOS/overlay/workdir"
-mkdir -p "${WKINSTALL_ROOT_MNT}/LiveOS/overlay/merged"
 
-## # Write the persistence.conf file
-## cat <<EOF > "${WKINSTALL_ROOT_MNT}/persistence.conf"
-## /var/lib/rancher source=rancher/lib
-## / union,source=files
-## #/etc union
-## EOF
+# Write the persistence.conf file
+cat <<EOF > "${WKINSTALL_ROOT_MNT}/persistence.conf"
+/var/lib/rancher source=rancher/lib
+/ union,source=overlayfs
+EOF
 
 echo "=== EFI files ==="
 find "$WKINSTALL_EFI_MNT"
