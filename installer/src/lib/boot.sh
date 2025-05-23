@@ -47,11 +47,12 @@ EOF
 install_systemd_boot() {
     local efi_mount="$1"
     local boot_uuid="$2"
+    local root_uuid="$3"
 
     # Make sure arguments are set
-    if [ -z "$efi_mount" ] || [ -z "$boot_uuid" ]; then
+    if [ -z "$efi_mount" ] || [ -z "$boot_uuid" ] || [ -z "$root_uuid" ]; then
         echo "Error: install_systemd_boot: Missing arguments"
-        echo "Usage: install_systemd_boot <efi_mount> <boot_uuid>"
+        echo "Usage: install_systemd_boot <efi_mount> <boot_uuid> <root_uuid>"
         return 1
     fi
 
@@ -61,11 +62,23 @@ install_systemd_boot() {
     mkdir -p "${efi_mount}/EFI/BOOT"
     cp /usr/lib/systemd/boot/efi/systemd-bootx64.efi "${efi_mount}/EFI/BOOT/BOOTX64.EFI"
     mkdir -p "${efi_mount}/loader/entries"
+    cat <<EOF > "${efi_mount}/loader/loader.conf"
+default whistlekube
+timeout 5
+console-mode max
+editor no
+EOF
     cat <<EOF > "${efi_mount}/loader/entries/whistlekube.conf"
 title Whistlekube Linux
 linux /EFI/Linux/vmlinuz
 initrd /EFI/Linux/initrd.img
-options root=live:UUID=${boot_uuid} rd.debug rd.live.debug rd.live.image console=tty0, console=ttyS0,115200
+options root=live:UUID=${boot_uuid} rd.debug rd.live.debug rd.live.image rd.live.overlay.overlayfs=1 rd.live.overlay=UUID=${root_uuid}:/LiveOS/overlay console=tty0, console=ttyS0,115200
+EOF
+    cat <<EOF > "${efi_mount}/loader/entries/whistlekube-recovery.conf"
+title Whistlekube Linux (recovery mode)
+linux /EFI/Linux/vmlinuz
+initrd /EFI/Linux/initrd.img
+options root=live:UUID=${boot_uuid} rd.debug rd.live.debug rd.live.image rd.live.overlay=UUID=${root_uuid} console=tty0, console=ttyS0,115200
 EOF
 
     # Copy the kernel and initrd to the EFI partition

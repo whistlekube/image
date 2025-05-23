@@ -51,6 +51,7 @@ efi_part_dev=$(get_efi_partition "$disk")
 boot_part_dev=$(get_boot_partition_efi "$disk")
 root_part_dev=$(get_root_partition_efi "$disk")
 boot_uuid=$(get_partition_uuid "$boot_part_dev")
+root_uuid=$(get_partition_uuid "$root_part_dev")
 
 mkdir -p "$WKINSTALL_EFI_MNT"
 mkdir -p "$WKINSTALL_BOOT_MNT"
@@ -72,12 +73,19 @@ echo "=== Copying files to boot partition ==="
 #mkdir "${WKINSTALL_BOOT_MNT}/grub"
 #echo "current=a" >> "${WKINSTALL_BOOT_MNT}/grub/abstate.conf"
 #install_grub_cfg "${WKINSTALL_BOOT_MNT}" "${boot_uuid}"
-install_systemd_boot "$WKINSTALL_EFI_MNT" "$boot_uuid"
+install_systemd_boot "$WKINSTALL_EFI_MNT" "$boot_uuid" "$root_uuid"
 mkdir -p "${WKINSTALL_BOOT_MNT}/LiveOS"
 cp -a "${WKINSTALL_MEDIUM_PATH}/install/filesystem.squashfs" "${WKINSTALL_BOOT_MNT}/LiveOS/squashfs.img"
 
 echo "=== Copying files to root partition ==="
-mkdir -p "$WKINSTALL_ROOT_MNT/overlay"
+mkdir -p "$WKINSTALL_ROOT_MNT/LiveOS/overlay"
+mkdir -p "${WKINSTALL_ROOT_MNT}/LiveOS/ovlwork"
+mkdir -p "${WKINSTALL_ROOT_MNT}/LiveOS/overlay/lowerdir"
+mkdir -p "${WKINSTALL_ROOT_MNT}/LiveOS/overlay/upperdir"
+mkdir -p "${WKINSTALL_ROOT_MNT}/LiveOS/overlay/upper"
+mkdir -p "${WKINSTALL_ROOT_MNT}/LiveOS/overlay/work"
+mkdir -p "${WKINSTALL_ROOT_MNT}/LiveOS/overlay/workdir"
+mkdir -p "${WKINSTALL_ROOT_MNT}/LiveOS/overlay/merged"
 
 ## # Write the persistence.conf file
 ## cat <<EOF > "${WKINSTALL_ROOT_MNT}/persistence.conf"
