@@ -69,20 +69,22 @@ echo "=== Copying files to EFI partition ==="
 install_efi_stub "$WKINSTALL_EFI_MNT" "$boot_uuid"
 
 echo "=== Copying files to boot partition ==="
-mkdir "${WKINSTALL_BOOT_MNT}/grub"
-echo "current=a" >> "${WKINSTALL_BOOT_MNT}/grub/abstate.conf"
-install_grub_cfg "${WKINSTALL_BOOT_MNT}" "${boot_uuid}"
-install_boot_files
+#mkdir "${WKINSTALL_BOOT_MNT}/grub"
+#echo "current=a" >> "${WKINSTALL_BOOT_MNT}/grub/abstate.conf"
+#install_grub_cfg "${WKINSTALL_BOOT_MNT}" "${boot_uuid}"
+install_systemd_boot "$WKINSTALL_EFI_MNT" "$boot_uuid"
+mkdir -p "${WKINSTALL_BOOT_MNT}/LiveOS"
+cp -a "${WKINSTALL_MEDIUM_PATH}/install/filesystem.squashfs" "${WKINSTALL_BOOT_MNT}/LiveOS/squashfs.img"
 
 echo "=== Copying files to root partition ==="
 mkdir -p "$WKINSTALL_ROOT_MNT/overlay"
 
-# Write the persistence.conf file
-cat <<EOF > "${WKINSTALL_ROOT_MNT}/persistence.conf"
-/var/lib/rancher source=rancher/lib
-/ union,source=files
-#/etc union
-EOF
+## # Write the persistence.conf file
+## cat <<EOF > "${WKINSTALL_ROOT_MNT}/persistence.conf"
+## /var/lib/rancher source=rancher/lib
+## / union,source=files
+## #/etc union
+## EOF
 
 echo "=== EFI files ==="
 find "$WKINSTALL_EFI_MNT"

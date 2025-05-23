@@ -223,7 +223,7 @@ qemu-install-dracut:
 		--cap-add=SYS_ADMIN --device /dev/nbd0 \
 		-v /dev:/dev \
 		-v $(OUTPUT_DIR):/output \
-		whistlekube-qemu-vanilla-installer
+		whistlekube-qemu-dracut-installer
 
 # Run a QEMU instance booting from the installer ISO (BIOS)
 qemu-iso-bios:

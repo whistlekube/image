@@ -398,6 +398,7 @@ ENV REPO_DIST_DIR="${ISO_DIR}/dists/${DEBIAN_RELEASE}/main/binary-${DEBIAN_ARCH}
 ENV HYBRID_MBR_PATH="/usr/lib/grub/i386-pc/boot_hybrid.img"
 
 COPY --from=installer-build ${OUTPUT_DIR}/boot/ ${ISO_DIR}/boot/
+COPY --from=dracut-build ${OUTPUT_DIR}/initrd.img ${ISO_DIR}/boot/initrd.img
 COPY --from=installer-build ${OUTPUT_DIR}/installer.squashfs ${ISO_DIR}/live/filesystem.squashfs
 COPY --from=target-build ${OUTPUT_DIR}/rootfs.squashfs ${ISO_DIR}/install/filesystem.squashfs
 #COPY --from=initrd-build /initrd-live.img ${ISO_DIR}/live/initrd.img

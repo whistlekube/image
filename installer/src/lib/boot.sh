@@ -43,6 +43,37 @@ EOF
     rm -f ${tmp_grub_cfg}
 }
 
+# Build a minimal efi stub that just loads grub from the root partition
+install_systemd_boot() {
+    local efi_mount="$1"
+    local boot_uuid="$2"
+
+    # Make sure arguments are set
+    if [ -z "$efi_mount" ] || [ -z "$boot_uuid" ]; then
+        echo "Error: install_systemd_boot: Missing arguments"
+        echo "Usage: install_systemd_boot <efi_mount> <boot_uuid>"
+        return 1
+    fi
+
+    # Install systemd-boot
+    mkdir -p "${efi_mount}/EFI/systemd"
+    cp /usr/lib/systemd/boot/efi/systemd-bootx64.efi "${efi_mount}/EFI/systemd/systemd-bootx64.efi"
+    mkdir -p "${efi_mount}/EFI/BOOT"
+    cp /usr/lib/systemd/boot/efi/systemd-bootx64.efi "${efi_mount}/EFI/BOOT/BOOTX64.EFI"
+    mkdir -p "${efi_mount}/loader/entries"
+    cat <<EOF > "${efi_mount}/loader/entries/whistlekube.conf"
+title Whistlekube Linux
+linux /EFI/Linux/vmlinuz
+initrd /EFI/Linux/initrd.img
+options root=live:UUID=${boot_uuid} rd.debug rd.live.debug rd.live.image console=tty0, console=ttyS0,115200
+EOF
+
+    # Copy the kernel and initrd to the EFI partition
+    mkdir -p "${efi_mount}/EFI/Linux"
+    cp /run/live/medium/boot/vmlinuz "${efi_mount}/EFI/Linux/vmlinuz"
+    cp /run/live/medium/boot/initrd.img "${efi_mount}/EFI/Linux/initrd.img"
+}
+
 install_grub_cfg() {
     local boot_mount="$1"
     local boot_uuid="$2"
@@ -63,10 +94,10 @@ setial --unit=0 --speed=115200
 terminal --timeout=5 serial console
 
 menuentry "Whistlekube Linux" {
-    search --fs-uuid --set=root ${boot_uuid}
     echo "Loading whistlekube kernel..."
-    linux /slot_a/vmlinuz boot=live components nomodeset debug console=tty0, console=ttyS0,115200 \\
-        live-media-path=/slot_a persistence persistence-storage=filesystem
+    linux /slot_a/vmlinuz root=UUID=${boot_uuid} live-media-path=/slot_a persistence persistence-storage=filesystem \\
+        nomodeset debug console=tty0, console=ttyS0,115200
+        
     echo "Loading whistlekube initrd..."
     initrd /slot_a/initrd.img
 }
