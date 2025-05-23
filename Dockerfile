@@ -25,7 +25,11 @@ ENV DEBIAN_ARCH="${TARGETARCH}"
 ENV DEBIAN_FRONTEND=noninteractive
 ENV DEBCONF_NONINTERACTIVE_SEEN=true
 
+ENV ROOTFS_DIR="/rootfs"
+
+# === Download tools ===
 FROM base-builder AS download-tools
+ARG OUTPUT_DIR
 # Install curl
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl openssl ca-certificates && \
@@ -46,8 +50,7 @@ RUN mkdir -p ${OUTPUT_DIR} && \
 
 # === Base rootfs builder with tools installed ===
 # This stage installs mmdebstrap and squashfs-tools for building the root filesystems
-FROM base-builder AS rootfs-builder
-ENV ROOTFS_DIR="/rootfs"
+FROM base-builder AS bootstrap-tools
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt/lists <<EOFDOCKER
 set -eux
@@ -62,7 +65,7 @@ EOFDOCKER
 
 # === Installer rootfs build ===
 # This stage builds the installer root filesystem
-FROM rootfs-builder AS installer-debstrap
+FROM bootstrap-tools AS installer-debstrap
 ARG OUTPUT_DIR
 ENV MMDEBSTRAP_VARIANT="essential"
 ENV MMDEBSTRAP_INCLUDE="\
@@ -99,6 +102,9 @@ cp -r ${ROOTFS_DIR}/boot ${OUTPUT_DIR}/boot
 mv ${OUTPUT_DIR}/boot/vmlinuz-* ${OUTPUT_DIR}/boot/vmlinuz && \
 mv ${OUTPUT_DIR}/boot/initrd.img-* ${OUTPUT_DIR}/boot/initrd.img && \
 
+mkdir -p ${OUTPUT_DIR}/lib
+cp -a ${ROOTFS_DIR}/usr/lib/modules ${OUTPUT_DIR}/lib/modules
+
 # Final cleanup of the rootfs
 rm -rf ${ROOTFS_DIR}/boot/*
 rm -f ${ROOTFS_DIR}/configure-chroot.sh
@@ -118,7 +124,7 @@ COPY --from=installer-build /output/ /
 
 # === Target rootfs build ===
 # This stage builds the target root filesystem
-FROM rootfs-builder AS target-debstrap
+FROM bootstrap-tools AS target-debstrap
 WORKDIR /build
 ENV ROOTFS_DIR="/rootfs"
 ENV MMDEBSTRAP_VARIANT="apt"
@@ -170,7 +176,7 @@ COPY --from=target-build /output/ /
 
 # === Vanilla rootfs build ===
 # This stage builds the vanilla root filesystem
-FROM rootfs-builder AS vanilla-debstrap
+FROM bootstrap-tools AS vanilla-debstrap
 WORKDIR /build
 ENV ROOTFS_DIR="/rootfs"
 ENV MMDEBSTRAP_VARIANT="apt"
@@ -214,6 +220,40 @@ RUN echo "=== Squashing VANILLA filesystem ===" && \
 # === Vanilla rootfs artifact ===
 FROM scratch AS vanilla-artifact
 COPY --from=vanilla-build /output/ /
+
+
+# === Dracut tools ===
+FROM base-builder AS dracut-tools
+RUN <<EOFDOCKER
+set -eux
+apt-get update
+apt-get install -y --no-install-recommends \
+    dracut-core \
+    dracut-live
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+EOFDOCKER
+
+# === Dracut build ===
+FROM dracut-tools AS dracut-build
+WORKDIR /build
+ARG OUTPUT_DIR
+COPY /target/dracut.conf ./dracut.conf
+COPY --from=installer-build ${OUTPUT_DIR}/lib/modules/ /target/lib/modules/
+RUN <<EOFDOCKER
+set -eux
+echo "=== Building DRACUT initramfs ==="
+KVER=$(ls -1 /target/lib/modules | sort -V | tail -n1)
+mkdir -p ${OUTPUT_DIR}
+dracut --kver ${KVER} \
+    --conf dracut.conf \
+    --force \
+    --kver ${KVER} \
+    --kmoddir /target/lib/modules/${KVER} \
+    ${OUTPUT_DIR}/initrd.img
+EOFDOCKER
+
+
 
 # === EFI build ===
 # This stage builds the EFI partition image
@@ -460,6 +500,22 @@ COPY /installer/src/lib/ /usr/local/lib/wkinstall/lib/
 # Copy the installer files to the image
 COPY --from=target-build ${OUTPUT_DIR}/rootfs.squashfs /run/live/medium/install/filesystem.squashfs
 COPY --from=installer-build ${OUTPUT_DIR}/boot/ /run/live/medium/boot/
+
+CMD ["/bin/bash", "-c", "./qemu-install.sh"]
+
+FROM qemu-image-build AS qemu-dracut-installer
+ARG QEMU_INSTALLED_IMAGE_FILENAME="${QEMU_IMAGE_PREFIX}-dracut.qcow2"
+ARG NBD_DEVICE="/dev/nbd0"
+WORKDIR /build
+COPY /scripts/qemu-install.sh ./qemu-install.sh
+COPY --from=qemu-image-build ${OUTPUT_DIR}/${QEMU_IMAGE_FILENAME} ./${QEMU_IMAGE_FILENAME}
+# Install the installer
+COPY /installer/src/bin/ /usr/local/sbin/
+COPY /installer/src/lib/ /usr/local/lib/wkinstall/lib/
+# Copy the installer files to the image
+COPY --from=target-build ${OUTPUT_DIR}/rootfs.squashfs /run/live/medium/install/filesystem.squashfs
+COPY --from=installer-build ${OUTPUT_DIR}/boot/ /run/live/medium/boot/
+COPY --from=dracut-build ${OUTPUT_DIR}/initrd.img /run/live/medium/boot/initrd.img
 
 CMD ["/bin/bash", "-c", "./qemu-install.sh"]
 

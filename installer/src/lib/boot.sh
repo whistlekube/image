@@ -56,13 +56,16 @@ install_grub_cfg() {
 
     mkdir -p "${boot_mount}/grub"
     cat <<EOF > "${boot_mount}/grub/grub.cfg"
-set timeout=30
+set timeout=5
 set default="0"
+
+setial --unit=0 --speed=115200
+terminal --timeout=5 serial console
 
 menuentry "Whistlekube Linux" {
     search --fs-uuid --set=root ${boot_uuid}
     echo "Loading whistlekube kernel..."
-    linux /slot_a/vmlinuz boot=live components nomodeset debug console=ttyS0,115200 \\
+    linux /slot_a/vmlinuz boot=live components nomodeset debug console=tty0, console=ttyS0,115200 \\
         live-media-path=/slot_a persistence persistence-storage=filesystem
     echo "Loading whistlekube initrd..."
     initrd /slot_a/initrd.img

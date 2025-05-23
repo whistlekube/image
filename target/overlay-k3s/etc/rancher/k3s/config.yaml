@@ -1,15 +1,15 @@
 # Server configuration
 write-kubeconfig-mode: "0644"
 tls-san:
-  - whistlekube.local
+  - "whistlekube.local"
 
 # Disable addons we don't need
 disable:
-#  - traefik
-#  - servicelb
-  - coredns
-  - local-storage
-  - metrics-server
+  - traefik
+  - servicelb
+#  - coredns
+#  - local-storage
+#  - metrics-server
 flannel-backend: none
 disable-network-policy: true
 disable-kube-proxy: true

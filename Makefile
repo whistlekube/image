@@ -216,6 +216,15 @@ qemu-install-vanilla:
 		-v $(OUTPUT_DIR):/output \
 		whistlekube-qemu-vanilla-installer
 
+# Partitions the disk and runs the whistlekube installer
+qemu-install-dracut:
+	@$(MAKE) build DOCKER_IMAGE_NAME=whistlekube-qemu-dracut-installer BUILD_TARGET=qemu-dracut-installer $(MAKEFLAGS)
+	docker run --rm --privileged \
+		--cap-add=SYS_ADMIN --device /dev/nbd0 \
+		-v /dev:/dev \
+		-v $(OUTPUT_DIR):/output \
+		whistlekube-qemu-vanilla-installer
+
 # Run a QEMU instance booting from the installer ISO (BIOS)
 qemu-iso-bios:
 	qemu-system-x86_64 -m 1G -drive file=$(QEMU_IMAGE_PATH),format=qcow2,if=virtio -cdrom $(OUTPUT_DIR)/$(ISO_FILENAME) -boot d

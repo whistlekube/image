@@ -80,7 +80,7 @@ mkdir -p "$WKINSTALL_ROOT_MNT/overlay"
 # Write the persistence.conf file
 cat <<EOF > "${WKINSTALL_ROOT_MNT}/persistence.conf"
 /var/lib/rancher source=rancher/lib
-/ union,source=overlay
+/ union,source=files
 #/etc union
 EOF
 
