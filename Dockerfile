@@ -48,6 +48,24 @@ RUN mkdir -p ${OUTPUT_DIR} && \
     "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-${DEBIAN_ARCH}.tar.gz" && \
     chmod +x ${OUTPUT_DIR}/k3s
 
+# === Download real kubernetes ===
+FROM download-tools AS kubernetes-download
+
+ARG KUBERNETES_VERSION=v1.33.1
+ARG DEBIAN_ARCH
+
+RUN mkdir -p ${OUTPUT_DIR}/bin && \
+    curl -fSL -o ${OUTPUT_DIR}/bin/kube-apiserver "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${DEBIAN_ARCH}/kube-apiserver" && \
+    curl -fSL -o ${OUTPUT_DIR}/bin/kube-controller-manager "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${DEBIAN_ARCH}/kube-controller-manager" && \
+    curl -fSL -o ${OUTPUT_DIR}/bin/kube-scheduler "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${DEBIAN_ARCH}/kube-scheduler" && \
+    curl -fSL -o ${OUTPUT_DIR}/bin/kubelet "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${DEBIAN_ARCH}/kubelet" && \
+    curl -fSL -o ${OUTPUT_DIR}/bin/kubectl "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${DEBIAN_ARCH}/kubectl" && \
+    chmod +x ${OUTPUT_DIR}/bin/kube-apiserver && \
+    chmod +x ${OUTPUT_DIR}/bin/kube-controller-manager && \
+    chmod +x ${OUTPUT_DIR}/bin/kube-scheduler && \
+    chmod +x ${OUTPUT_DIR}/bin/kubelet && \
+    chmod +x ${OUTPUT_DIR}/bin/kubectl
+
 # === Base rootfs builder with tools installed ===
 # This stage installs mmdebstrap and squashfs-tools for building the root filesystems
 FROM base-builder AS bootstrap-tools
@@ -130,8 +148,10 @@ ENV ROOTFS_DIR="/rootfs"
 ENV MMDEBSTRAP_VARIANT="apt"
 #ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
 ENV MMDEBSTRAP_INCLUDE="zstd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,\
-    systemd-sysv,passwd,util-linux,coreutils,bash,login,dbus,ca-certificates,\
-    iproute2,procps,less,vim-tiny,containernetworking-plugins"
+    systemd,systemd-sysv,passwd,util-linux,coreutils,bash,login,dbus,ca-certificates,\
+    bridge-utils,ethtool,socat,conntrack,nfs-common,squashfs-tools,parted,gdisk,e2fsprogs,\
+    rsync,jq,less,htop,strace,\
+    iproute2,procps,less,vim-tiny,containernetworking-plugins,snapd"
 #COPY /boot/ /config/boot/
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \
@@ -145,9 +165,11 @@ COPY /target/overlay-base/ ${ROOTFS_DIR}/
 COPY /target/overlay-whistle/ ${ROOTFS_DIR}/
 COPY /target/overlay-k3s/ ${ROOTFS_DIR}/
 COPY --from=k3s-download ${OUTPUT_DIR}/k3s ${ROOTFS_DIR}/usr/local/bin/k3s
+#COPY --from=kubernetes-download ${OUTPUT_DIR}/bin/ ${ROOTFS_DIR}/usr/local/bin/
 #COPY --from=k3s-download ${OUTPUT_DIR}/k3s-airgap-images-${DEBIAN_ARCH}.tar.gz ${ROOTFS_DIR}/var/lib/rancher/k3s/agent/images/
 COPY /target/configure-chroot.sh ${ROOTFS_DIR}/configure-chroot.sh
 COPY /target/scripts/configure-k3s.sh ${ROOTFS_DIR}/configure-k3s.sh
+#COPY /target/scripts/configure-kubernetes.sh ${ROOTFS_DIR}/configure-kubernetes.sh
 COPY /scripts/mount-chroot.sh /scripts/mount-chroot.sh
 COPY /scripts/umount-chroot.sh /scripts/umount-chroot.sh
 RUN --security=insecure <<EOFDOCKER
@@ -183,7 +205,9 @@ ENV MMDEBSTRAP_VARIANT="apt"
 #ENV MMDEBSTRAP_INCLUDE="systemd-sysv,systemd-boot,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree"
 ENV MMDEBSTRAP_INCLUDE="zstd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,\
     systemd-sysv,passwd,util-linux,coreutils,bash,login,dbus,ca-certificates,\
-    iproute2,procps,less,vim-tiny"
+    bridge-utils,ethtool,socat,conntrack,nfs-common,squashfs-tools,parted,gdisk,e2fsprogs,\
+    rsync,jq,less,htop,strace,\
+    iproute2,procps,less,vim-tiny,curl"
 #COPY /boot/ /config/boot/
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \
@@ -522,13 +546,13 @@ CMD ["/bin/bash", "-c", "./qemu-install.sh"]
 
 # === Install a vanilla system with no k3s ===
 FROM qemu-image-build AS qemu-vanilla-installer
-ARG QEMU_INSTALLED_IMAGE_FILENAME="${QEMU_IMAGE_PREFIX}-vanilla.qcow2"
-ARG NBD_DEVICE="/dev/nbd0"
+ENV QCOW_FILE="${OUTPUT_DIR}/disk.qcow2"
+ENV NBD_DEVICE="/dev/nbd0"
 WORKDIR /build
 COPY /scripts/qemu-install.sh ./qemu-install.sh
-COPY --from=qemu-image-build ${OUTPUT_DIR}/${QEMU_IMAGE_FILENAME} ./${QEMU_IMAGE_FILENAME}
+COPY --from=qemu-image-build ${OUTPUT_DIR}/${QEMU_IMAGE_FILENAME} ${OUTPUT_DIR}/${QEMU_IMAGE_FILENAME}
 # Install the installer
-COPY /installer/src/bin/newinstall.sh /usr/local/sbin/wkinstall.sh
+COPY /installer/src/bin/ /usr/local/sbin/
 COPY /installer/src/lib/ /usr/local/lib/wkinstall/lib/
 # Copy the installer files to the image, mirroring the iso layout
 COPY --from=vanilla-build ${OUTPUT_DIR}/rootfs.squashfs /run/live/medium/install/filesystem.squashfs

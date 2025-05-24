@@ -82,7 +82,6 @@ echo "=== Copying files to root partition ==="
 
 # Write the persistence.conf file
 cat <<EOF > "${WKINSTALL_ROOT_MNT}/persistence.conf"
-/var/lib/rancher source=rancher/lib
 / union,source=overlayfs
 EOF
 

@@ -5,11 +5,9 @@
 # and is run within the chroot environment
 # 
 
-rootfs="$1"
-
 set -euxo pipefail
 
-echo "TTYPath=/dev/tty4" >> ${rootfs}/etc/systemd/journald.conf
+echo "TTYPath=/dev/tty4" >> /etc/systemd/journald.conf
 
 # Enable whistle-netd
 systemctl enable whistle-netd

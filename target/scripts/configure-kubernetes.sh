@@ -1,19 +1,16 @@
 #!/bin/bash
 
-# Configure k3s in the rootfs chroot environment
+# Configure kubernetes in the rootfs chroot environment
 
 rootfs="$1"
 
 set -euxo pipefail
 
-# Install k3s
-mkdir -p ${rootfs}/etc/rancher/k3s
+# Install kubernetes
+mkdir -p ${rootfs}/etc/kubernetes
 mkdir -p ${rootfs}/var/lib/rancher/k3s/agent/images
 mkdir -p ${rootfs}/var/lib/rancher/k3s/server/manifests
 systemctl enable k3s
-
-ln -sf /usr/local/bin/k3s /usr/local/bin/kubectl
-ln -sf /usr/local/bin/k3s /usr/local/bin/crictl
 
 # Link base CNI plugins to where k3s expects
 mkdir -p ${rootfs}/opt/cni/bin

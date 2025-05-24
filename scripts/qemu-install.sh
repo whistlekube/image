@@ -2,8 +2,7 @@
 
 set -euxo pipefail
 
-BUILD_DIR=${BUILD_DIR:-/build}
-QEMU_IMAGE_PREFIX=${QEMU_IMAGE_PREFIX:-disk}
+QCOW_FILE=${QCOW_FILE:-$1}
 OUTPUT_DIR=${OUTPUT_DIR:-/output}
 NBD_DEVICE=${NBD_DEVICE:-/dev/nbd0}
 
@@ -11,7 +10,7 @@ NBD_DEVICE=${NBD_DEVICE:-/dev/nbd0}
 qemu-nbd --disconnect ${NBD_DEVICE} || true
 
 # Connect the NBD device to the image file
-qemu-nbd --connect=${NBD_DEVICE} "${BUILD_DIR}/${QEMU_IMAGE_PREFIX}.qcow2"
+qemu-nbd --connect=${NBD_DEVICE} "${QCOW_FILE}"
 sleep 1
 lsblk
 
@@ -20,7 +19,3 @@ lsblk
 
 # Disconnect the NBD device
 qemu-nbd --disconnect ${NBD_DEVICE} || true
-
-# Copy the image to the output directory
-mkdir -p ${OUTPUT_DIR}
-cp "${BUILD_DIR}/${QEMU_IMAGE_PREFIX}.qcow2" ${OUTPUT_DIR}/

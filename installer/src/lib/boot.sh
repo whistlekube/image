@@ -72,7 +72,7 @@ EOF
 title Whistlekube Linux
 linux /EFI/Linux/vmlinuz
 initrd /EFI/Linux/initrd.img
-options root=UUID=${boot_uuid} boot=live debug live-media-path=/slot_a persistence persistence-storage=filesystem console=tty0, console=ttyS0,115200
+options root=UUID=${boot_uuid} boot=live showmounts debug=1 initramfs.debug quickusbmodules live-boot.debug persistence persistence-storage=filesystem live-media-path=/slot_a console=tty0, console=ttyS0,115200
 EOF
     cat <<EOF > "${efi_mount}/loader/entries/whistlekube-recovery.conf"
 title Whistlekube Linux (recovery mode)

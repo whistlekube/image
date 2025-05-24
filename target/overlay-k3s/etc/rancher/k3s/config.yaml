@@ -1,8 +1,10 @@
 # Server configuration
 write-kubeconfig-mode: "0644"
-tls-san:
-  - "whistlekube.local"
+#tls-san:
+#- "whistlekube.local"
 
+cluster-init: true
+ 
 # Disable addons we don't need
 disable:
   - traefik
