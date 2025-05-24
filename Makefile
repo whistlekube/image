@@ -252,7 +252,8 @@ qemu-run-uefi:
 		-boot c \
 		-enable-kvm \
 		-cpu host \
-		-netdev user,id=net0 -device e1000,netdev=net0 \
 		-serial stdio \
+		-netdev user,id=net0 -device e1000,netdev=net0 \
 		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE_PATH) \
 		-drive if=pflash,format=raw,file=$(OUTPUT_DIR)/OVMF_VARS.fd
+

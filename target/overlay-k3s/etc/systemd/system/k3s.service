@@ -1,10 +1,13 @@
 [Unit]
 Description=Lightweight Kubernetes
 Documentation=https://k3s.io
-After=network-online.target
+Wants=network-online.target
+After=network-online.target containerd.service
 
 [Service]
 Type=notify
+EnvironmentFile=-/etc/default/k3s
+EnvironmentFile=-/etc/rancher/k3s/k3s.env
 ExecStart=/usr/local/bin/k3s server \
     --config /etc/rancher/k3s/config.yaml \
     --node-ip 127.0.0.1 \

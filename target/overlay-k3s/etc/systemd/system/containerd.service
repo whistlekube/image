@@ -1,0 +1,41 @@
+[Unit]
+Description=containerd container runtime
+Documentation=https://containerd.io
+After=network.target local-fs.target
+Before=k3s.service
+
+[Service]
+Type=notify
+ExecStartPre=-/sbin/modprobe overlay
+ExecStart=/usr/local/bin/containerd
+Restart=always
+RestartSec=5
+Delegate=yes
+KillMode=process
+OOMScoreAdjust=-999
+LimitNOFILE=1048576
+LimitNPROC=1048576
+LimitCORE=infinity
+TasksMax=infinity
+TimeoutStartSec=0
+TimeoutStopSec=120s
+
+# Runtime directory management (creates /run/containerd automatically)
+RuntimeDirectory=containerd
+RuntimeDirectoryMode=0755
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/containerd /var/log
+ProtectKernelTunables=true
+ProtectKernelModules=false
+ProtectControlGroups=true
+RestrictRealtime=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

@@ -2,7 +2,6 @@
 
 interface="ens3"
 
-ip route add default dev lo
-
-#ip addr add 10.0.2.17/24 dev "$interface"
-#ip link set "$interface" up
+ip addr add 10.0.2.17/24 dev "$interface"
+ip link set "$interface" up
+ip route add default via 10.0.2.2 dev "$interface"

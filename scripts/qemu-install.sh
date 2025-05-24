@@ -2,7 +2,7 @@
 
 set -euxo pipefail
 
-QCOW_FILE=${QCOW_FILE:-$1}
+QCOW_FILE=${QCOW_FILE:-/output/disk.qcow2}
 OUTPUT_DIR=${OUTPUT_DIR:-/output}
 NBD_DEVICE=${NBD_DEVICE:-/dev/nbd0}
 

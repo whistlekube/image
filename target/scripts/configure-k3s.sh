@@ -2,21 +2,18 @@
 
 # Configure k3s in the rootfs chroot environment
 
-rootfs="$1"
-
 set -euxo pipefail
 
+# Install  containerd
+mkdir -p /var/lib/containerd
+mkdir -p /etc/cni/net.d
+mkdir -p /etc/containerd
+systemctl enable containerd
+
 # Install k3s
-mkdir -p ${rootfs}/etc/rancher/k3s
-mkdir -p ${rootfs}/var/lib/rancher/k3s/agent/images
-mkdir -p ${rootfs}/var/lib/rancher/k3s/server/manifests
+mkdir -p /var/lib/rancher/k3s
+mkdir -p /etc/rancher/k3s
+mkdir -p /var/log
 systemctl enable k3s
 
 ln -sf /usr/local/bin/k3s /usr/local/bin/kubectl
-ln -sf /usr/local/bin/k3s /usr/local/bin/crictl
-
-# Link base CNI plugins to where k3s expects
-mkdir -p ${rootfs}/opt/cni/bin
-for bin in ${rootfs}/usr/lib/cni/*; do
-  ln -sf "$bin" ${rootfs}/opt/cni/bin/
-done

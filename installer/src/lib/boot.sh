@@ -72,14 +72,20 @@ EOF
 title Whistlekube Linux
 linux /EFI/Linux/vmlinuz
 initrd /EFI/Linux/initrd.img
-options root=UUID=${boot_uuid} boot=live showmounts debug=1 initramfs.debug quickusbmodules live-boot.debug persistence persistence-storage=filesystem live-media-path=/slot_a console=tty0, console=ttyS0,115200
+options root=UUID=${boot_uuid} boot=live showmounts quickusbmodules persistence persistence-storage=filesystem live-media-path=/slot_a console=tty0, console=ttyS0,115200
 EOF
     cat <<EOF > "${efi_mount}/loader/entries/whistlekube-recovery.conf"
 title Whistlekube Linux (recovery mode)
 linux /EFI/Linux/vmlinuz
 initrd /EFI/Linux/initrd.img
-options root=live:UUID=${boot_uuid} rd.debug rd.live.debug rd.live.image rd.live.overlay=UUID=${root_uuid} console=tty0, console=ttyS0,115200
+options root=UUID=${boot_uuid} boot=live showmounts debug=1 initramfs.debug quickusbmodules live-boot.debug persistence persistence-storage=filesystem live-media-path=/slot_a console=tty0, console=ttyS0,115200
 EOF
+##     cat <<EOF > "${efi_mount}/loader/entries/whistlekube-recovery.conf"
+## title Whistlekube Linux (recovery mode)
+## linux /EFI/Linux/vmlinuz
+## initrd /EFI/Linux/initrd.img
+## options root=live:UUID=${boot_uuid} rd.debug rd.live.debug rd.live.image rd.live.overlay=UUID=${root_uuid} console=tty0, console=ttyS0,115200
+## EOF
 
     # Copy the kernel and initrd to the EFI partition
     mkdir -p "${efi_mount}/EFI/Linux"

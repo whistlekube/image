@@ -7,6 +7,10 @@ ARG DEBIAN_MIRROR="http://deb.debian.org/debian"
 ARG ISO_FILENAME="whistlekube-installer-${BUILD_VERSION}.iso"
 ARG OUTPUT_DIR="/output"
 ARG K3S_VERSION="v1.33.0+k3s1"
+# Containerd version should match what's in k3s (see k3s github releases page)
+ARG CONTAINERD_VERSION="2.0.4"
+ARG RUNC_VERSION="1.2.5"
+ARG CNI_PLUGINS_VERSION="1.7.1"
 ARG WKINSTALL_DEBUG="false"
 
 
@@ -32,21 +36,31 @@ FROM base-builder AS download-tools
 ARG OUTPUT_DIR
 # Install curl
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl openssl ca-certificates && \
+    apt-get install -y --no-install-recommends curl openssl tar ca-certificates && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# === Download k3s ===
+# === Download k3s and containerd ===
 FROM download-tools AS k3s-download
 
 ARG K3S_VERSION
+ARG CONTAINERD_VERSION
+ARG RUNC_VERSION
+ARG CNI_PLUGINS_VERSION
 ARG DEBIAN_ARCH
 
-RUN mkdir -p ${OUTPUT_DIR} && \
-    curl -fSL -o ${OUTPUT_DIR}/k3s "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s" && \
+RUN mkdir -p ${OUTPUT_DIR}/bin ${OUTPUT_DIR}/sbin ${OUTPUT_DIR}/cni && \
+    curl -fSL -o ${OUTPUT_DIR}/bin/k3s "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s" && \
     curl -fSL -o ${OUTPUT_DIR}/k3s-airgap-images-${DEBIAN_ARCH}.tar.gz \
     "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-${DEBIAN_ARCH}.tar.gz" && \
-    chmod +x ${OUTPUT_DIR}/k3s
+    curl -fSL -o ${OUTPUT_DIR}/containerd-${CONTAINERD_VERSION}-linux-${DEBIAN_ARCH}.tar.gz \
+    "https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-${DEBIAN_ARCH}.tar.gz" && \
+    curl -fSL -o ${OUTPUT_DIR}/runc.amd64 "https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.amd64" && \
+    curl -fSL -o ${OUTPUT_DIR}/cni-plugins-linux-${DEBIAN_ARCH}-v${CNI_PLUGINS_VERSION}.tgz \
+    "https://github.com/containernetworking/plugins/releases/download/v${CNI_PLUGINS_VERSION}/cni-plugins-linux-${DEBIAN_ARCH}-v${CNI_PLUGINS_VERSION}.tgz" && \
+    tar -xzf ${OUTPUT_DIR}/containerd-${CONTAINERD_VERSION}-linux-${DEBIAN_ARCH}.tar.gz -C ${OUTPUT_DIR} && \
+    tar -xzf ${OUTPUT_DIR}/cni-plugins-linux-${DEBIAN_ARCH}-v${CNI_PLUGINS_VERSION}.tgz -C ${OUTPUT_DIR}/cni/ && \
+    chmod +x ${OUTPUT_DIR}/bin/*
 
 # === Download real kubernetes ===
 FROM download-tools AS kubernetes-download
@@ -150,8 +164,8 @@ ENV MMDEBSTRAP_VARIANT="apt"
 ENV MMDEBSTRAP_INCLUDE="zstd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,\
     systemd,systemd-sysv,passwd,util-linux,coreutils,bash,login,dbus,ca-certificates,\
     bridge-utils,ethtool,socat,conntrack,nfs-common,squashfs-tools,parted,gdisk,e2fsprogs,\
-    rsync,jq,less,htop,strace,\
-    iproute2,procps,less,vim-tiny,containernetworking-plugins,snapd"
+    rsync,jq,less,htop,strace,iputils-ping,\
+    iproute2,procps,less,vim-tiny"
 #COPY /boot/ /config/boot/
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \
@@ -164,7 +178,9 @@ FROM target-debstrap AS target-configure
 COPY /target/overlay-base/ ${ROOTFS_DIR}/
 COPY /target/overlay-whistle/ ${ROOTFS_DIR}/
 COPY /target/overlay-k3s/ ${ROOTFS_DIR}/
-COPY --from=k3s-download ${OUTPUT_DIR}/k3s ${ROOTFS_DIR}/usr/local/bin/k3s
+COPY --from=k3s-download ${OUTPUT_DIR}/bin/ ${ROOTFS_DIR}/usr/local/bin/
+COPY --from=k3s-download ${OUTPUT_DIR}/sbin/ ${ROOTFS_DIR}/usr/local/sbin/
+COPY --from=k3s-download ${OUTPUT_DIR}/cni/ ${ROOTFS_DIR}/opt/cni/bin/
 #COPY --from=kubernetes-download ${OUTPUT_DIR}/bin/ ${ROOTFS_DIR}/usr/local/bin/
 #COPY --from=k3s-download ${OUTPUT_DIR}/k3s-airgap-images-${DEBIAN_ARCH}.tar.gz ${ROOTFS_DIR}/var/lib/rancher/k3s/agent/images/
 COPY /target/configure-chroot.sh ${ROOTFS_DIR}/configure-chroot.sh
@@ -206,7 +222,7 @@ ENV MMDEBSTRAP_VARIANT="apt"
 ENV MMDEBSTRAP_INCLUDE="zstd,linux-image-amd64,firmware-linux-free,firmware-linux-nonfree,\
     systemd-sysv,passwd,util-linux,coreutils,bash,login,dbus,ca-certificates,\
     bridge-utils,ethtool,socat,conntrack,nfs-common,squashfs-tools,parted,gdisk,e2fsprogs,\
-    rsync,jq,less,htop,strace,\
+    rsync,jq,less,htop,strace,iputils-ping,\
     iproute2,procps,less,vim-tiny,curl"
 #COPY /boot/ /config/boot/
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
@@ -529,7 +545,8 @@ COPY --from=installer-build ${OUTPUT_DIR}/boot/ /run/live/medium/boot/
 CMD ["/bin/bash", "-c", "./qemu-install.sh"]
 
 FROM qemu-image-build AS qemu-dracut-installer
-ARG QEMU_INSTALLED_IMAGE_FILENAME="${QEMU_IMAGE_PREFIX}-dracut.qcow2"
+ARG QEMU_IMAGE_FILENAME="${QEMU_IMAGE_PREFIX}.qcow2"
+ENV QCOW_FILE="${OUTPUT_DIR}/${QEMU_IMAGE_FILENAME}"
 ARG NBD_DEVICE="/dev/nbd0"
 WORKDIR /build
 COPY /scripts/qemu-install.sh ./qemu-install.sh
