@@ -7,6 +7,7 @@ LINUX_PACKAGES="linux-image-amd64"
 
 # Configuration variables
 DEBIAN_RELEASE=${DEBIAN_RELEASE:-trixie}
+DEBIAN_MIRROR=${DEBIAN_MIRROR:-http://deb.debian.org/debian}
 ROOTFS_DIR=${ROOTFS_DIR:-$PWD/rootfs}
 MMDEBSTRAP_VARIANT=${MMDEBSTRAP_VARIANT:-essential}
 MMDEBSTRAP_INCLUDE=${MMDEBSTRAP_INCLUDE:-"${SYSTEMD_PACKAGES} ${LINUX_PACKAGES}"}
@@ -23,6 +24,8 @@ mmdebstrap \
   --variant=${MMDEBSTRAP_VARIANT} \
   --include="$MMDEBSTRAP_INCLUDE" \
   --components="main contrib non-free non-free-firmware" \
+  --setup-hook='mkdir -p "$1/etc/apt/keyrings"' \
+  --setup-hook='curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o "$1/etc/apt/keyrings/docker.gpg"' \
   --aptopt='APT::Sandbox::User "root"' \
   --aptopt='APT::Install-Recommends "false"' \
   --aptopt='APT::Install-Suggests "false"' \
@@ -41,5 +44,6 @@ mmdebstrap \
   --dpkgopt=path-exclude=/usr/share/zsh/* \
   "$DEBIAN_RELEASE" \
   $ROOTFS_DIR \
+  "$DEBIAN_MIRROR" \
   "$@"
 

@@ -55,12 +55,12 @@ RUN mkdir -p ${OUTPUT_DIR}/bin ${OUTPUT_DIR}/sbin ${OUTPUT_DIR}/cni && \
     "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-${DEBIAN_ARCH}.tar.gz" && \
     curl -fSL -o ${OUTPUT_DIR}/containerd-${CONTAINERD_VERSION}-linux-${DEBIAN_ARCH}.tar.gz \
     "https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-${DEBIAN_ARCH}.tar.gz" && \
-    curl -fSL -o ${OUTPUT_DIR}/runc.amd64 "https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.amd64" && \
+    curl -fSL -o ${OUTPUT_DIR}/sbin/runc "https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.amd64" && \
     curl -fSL -o ${OUTPUT_DIR}/cni-plugins-linux-${DEBIAN_ARCH}-v${CNI_PLUGINS_VERSION}.tgz \
     "https://github.com/containernetworking/plugins/releases/download/v${CNI_PLUGINS_VERSION}/cni-plugins-linux-${DEBIAN_ARCH}-v${CNI_PLUGINS_VERSION}.tgz" && \
     tar -xzf ${OUTPUT_DIR}/containerd-${CONTAINERD_VERSION}-linux-${DEBIAN_ARCH}.tar.gz -C ${OUTPUT_DIR} && \
     tar -xzf ${OUTPUT_DIR}/cni-plugins-linux-${DEBIAN_ARCH}-v${CNI_PLUGINS_VERSION}.tgz -C ${OUTPUT_DIR}/cni/ && \
-    chmod +x ${OUTPUT_DIR}/bin/*
+    chmod +x ${OUTPUT_DIR}/bin/* ${OUTPUT_DIR}/sbin/*
 
 # === Download real kubernetes ===
 FROM download-tools AS kubernetes-download
@@ -90,6 +90,8 @@ apt-get update
 apt-get install -y --no-install-recommends \
     mmdebstrap \
     squashfs-tools \
+    curl \
+    gnupg \
     ca-certificates
 apt-get clean
 rm -rf /var/lib/apt/lists/*
@@ -109,7 +111,7 @@ lvm2,cryptsetup,dosfstools,ca-certificates"
 COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \
     echo "=== Building INSTALLER rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
-    /scripts/build-rootfs.sh ${DEBIAN_MIRROR}
+    /scripts/build-rootfs.sh
 
 # === Configure the installer rootfs ===
 FROM installer-debstrap AS installer-configure
@@ -171,7 +173,7 @@ COPY /scripts/build-rootfs.sh /scripts/build-rootfs.sh
 RUN --security=insecure \
     echo "=== Building TARGET rootfs for ${DEBIAN_ARCH} on ${DEBIAN_RELEASE} ===" && \
     mkdir -p ${OUTPUT_DIR} && \
-    /scripts/build-rootfs.sh ${DEBIAN_MIRROR}
+    /scripts/build-rootfs.sh
 
 # === Configure the target rootfs ===
 FROM target-debstrap AS target-configure

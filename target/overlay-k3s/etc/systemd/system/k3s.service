@@ -3,15 +3,13 @@ Description=Lightweight Kubernetes
 Documentation=https://k3s.io
 Wants=network-online.target
 After=network-online.target containerd.service
+Conflicts=k3s-agent.service
 
 [Service]
 Type=notify
-EnvironmentFile=-/etc/default/k3s
-EnvironmentFile=-/etc/rancher/k3s/k3s.env
-ExecStart=/usr/local/bin/k3s server \
-    --config /etc/rancher/k3s/config.yaml \
-    --node-ip 127.0.0.1 \
-    --bind-address=0.0.0.0
+EnvironmentFile=-/etc/default/%N
+EnvironmentFile=-/etc/sysconfig/%N
+EnvironmentFile=-/etc/systemd/system/k3s.service.env
 KillMode=process
 Delegate=yes
 LimitNOFILE=infinity
@@ -21,6 +19,16 @@ TasksMax=infinity
 TimeoutStartSec=0
 Restart=always
 RestartSec=5s
+ExecStartPre=/bin/sh -xc '! /usr/bin/systemctl is-enabled --quiet nm-cloud-setup.service'
+ExecStartPre=-/sbin/modprobe br_netfilter
+ExecStartPre=-/sbin/modprobe overlay
+ExecStart=/usr/local/bin/k3s server \
+    --container-runtime-endpoint unix:///run/containerd/containerd.sock \
+    --bind-address=0.0.0.0 \
+    --kubelet-arg="--oom-score-adj=-999"
+
+# CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_FSETID CAP_KILL CAP_SETGID CAP_SETUID CAP_SETPCAP CAP_NET_BIND_SERVICE CAP_NET_RAW CAP_SYS_CHROOT CAP_AUDIT_WRITE CAP_SETFCAP CAP_NET_ADMIN CAP_SYS_ADMIN CAP_SYSLOG
+# AmbientCapabilities=CAP_CHOWN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_FSETID CAP_KILL CAP_SETGID CAP_SETUID CAP_SETPCAP CAP_NET_BIND_SERVICE CAP_NET_RAW CAP_SYS_CHROOT CAP_AUDIT_WRITE CAP_SETFCAP CAP_NET_ADMIN CAP_SYS_ADMIN CAP_SYSLOG
 
 [Install]
 WantedBy=multi-user.target

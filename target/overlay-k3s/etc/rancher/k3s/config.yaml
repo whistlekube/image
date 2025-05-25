@@ -1,4 +1,10 @@
 # Server configuration
+
+
+# Debug
+#debug: true
+
+
 write-kubeconfig-mode: "0644"
 #tls-san:
 #- "whistlekube.local"
@@ -6,7 +12,7 @@ write-kubeconfig-mode: "0644"
 container-runtime-endpoint: unix:///run/containerd/containerd.sock
 
 cluster-init: true
- 
+
 # Disable addons we don't need
 disable:
   - traefik
@@ -14,11 +20,11 @@ disable:
 #  - coredns
 #  - local-storage
 #  - metrics-server
-flannel-backend: none
-disable-network-policy: true
-disable-kube-proxy: true
+#flannel-backend: none
+#disable-network-policy: true
+#disable-kube-proxy: true
 disable-cloud-controller: true
 disable-helm-controller: true
 
-protect-kernel-defaults: true
-secrets-encryption: true
+#protect-kernel-defaults: true
+#secrets-encryption: true

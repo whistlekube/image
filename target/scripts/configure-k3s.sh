@@ -13,7 +13,8 @@ systemctl enable containerd
 # Install k3s
 mkdir -p /var/lib/rancher/k3s
 mkdir -p /etc/rancher/k3s
-mkdir -p /var/log
+mkdir -p /var/log/k3s
 systemctl enable k3s
 
 ln -sf /usr/local/bin/k3s /usr/local/bin/kubectl
+ln -sf /usr/local/bin/k3s /usr/local/bin/crictl
