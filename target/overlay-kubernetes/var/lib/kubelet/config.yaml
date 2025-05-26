@@ -1,0 +1,57 @@
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+authentication:
+  anonymous:
+    enabled: false
+  webhook:
+    cacheTTL: 0s
+    enabled: false
+authorization:
+  mode: AlwaysAllow
+cgroupDriver: systemd
+clusterDNS:
+- 10.96.0.10
+clusterDomain: cluster.local
+containerRuntimeEndpoint: unix:///run/containerd/containerd.sock
+cpuManagerReconcilePeriod: 10s
+evictionHard:
+  imagefs.available: 15%
+  memory.available: 200Mi
+  nodefs.available: 10%
+  nodefs.inodesFree: 5%
+evictionPressureTransitionPeriod: 5m0s
+failSwapOn: false
+fileCheckFrequency: 20s
+healthzBindAddress: 127.0.0.1
+healthzPort: 10248
+httpCheckFrequency: 20s
+imageGCHighThresholdPercent: 85
+imageGCLowThresholdPercent: 80
+imageMinimumGCAge: 2m0s
+kubeReserved:
+  cpu: 100m
+  memory: 128Mi
+logging:
+  flushFrequency: 5s
+  options:
+    json:
+      infoBufferSize: "0"
+  verbosity: 2
+memorySwap: {}
+nodeStatusReportFrequency: 10s
+nodeStatusUpdateFrequency: 10s
+podPidsLimit: 2048
+registryPullQPS: 5
+registryBurst: 10
+rotateCertificates: false
+runtimeRequestTimeout: 2m0s
+serverTLSBootstrap: false
+shutdownGracePeriod: 30s
+shutdownGracePeriodCriticalPods: 10s
+staticPodPath: /etc/kubernetes/manifests
+streamingConnectionIdleTimeout: 4h0m0s
+syncFrequency: 1m0s
+systemReserved:
+  cpu: 100m
+  memory: 128Mi
+volumeStatsAggPeriod: 1m0s

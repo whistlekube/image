@@ -45,14 +45,23 @@ FROM download-tools AS k3s-download
 
 ARG K3S_VERSION
 ARG CONTAINERD_VERSION
-ARG RUNC_VERSION
-ARG CNI_PLUGINS_VERSION
 ARG DEBIAN_ARCH
 
 RUN mkdir -p ${OUTPUT_DIR}/bin ${OUTPUT_DIR}/sbin ${OUTPUT_DIR}/cni && \
     curl -fSL -o ${OUTPUT_DIR}/bin/k3s "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s" && \
     curl -fSL -o ${OUTPUT_DIR}/k3s-airgap-images-${DEBIAN_ARCH}.tar.gz \
     "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-${DEBIAN_ARCH}.tar.gz" && \
+    chmod +x ${OUTPUT_DIR}/bin/* ${OUTPUT_DIR}/sbin/*
+
+FROM download-tools AS containerd-download
+
+ARG CONTAINERD_VERSION
+ARG RUNC_VERSION
+ARG CNI_PLUGINS_VERSION
+ARG DEBIAN_ARCH
+
+RUN mkdir -p ${OUTPUT_DIR}/bin ${OUTPUT_DIR}/sbin ${OUTPUT_DIR}/cni && \
+    curl -fSL -o ${OUTPUT_DIR}/bin/containerd "https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-${DEBIAN_ARCH}.tar.gz" && \
     curl -fSL -o ${OUTPUT_DIR}/containerd-${CONTAINERD_VERSION}-linux-${DEBIAN_ARCH}.tar.gz \
     "https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-${DEBIAN_ARCH}.tar.gz" && \
     curl -fSL -o ${OUTPUT_DIR}/sbin/runc "https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.amd64" && \
@@ -60,25 +69,26 @@ RUN mkdir -p ${OUTPUT_DIR}/bin ${OUTPUT_DIR}/sbin ${OUTPUT_DIR}/cni && \
     "https://github.com/containernetworking/plugins/releases/download/v${CNI_PLUGINS_VERSION}/cni-plugins-linux-${DEBIAN_ARCH}-v${CNI_PLUGINS_VERSION}.tgz" && \
     tar -xzf ${OUTPUT_DIR}/containerd-${CONTAINERD_VERSION}-linux-${DEBIAN_ARCH}.tar.gz -C ${OUTPUT_DIR} && \
     tar -xzf ${OUTPUT_DIR}/cni-plugins-linux-${DEBIAN_ARCH}-v${CNI_PLUGINS_VERSION}.tgz -C ${OUTPUT_DIR}/cni/ && \
-    chmod +x ${OUTPUT_DIR}/bin/* ${OUTPUT_DIR}/sbin/*
+    chmod +x ${OUTPUT_DIR}/bin/* ${OUTPUT_DIR}/sbin/* ${OUTPUT_DIR}/cni/*
 
 # === Download real kubernetes ===
 FROM download-tools AS kubernetes-download
 
-ARG KUBERNETES_VERSION=v1.33.1
+ARG KUBERNETES_VERSION=v1.33.0
 ARG DEBIAN_ARCH
 
 RUN mkdir -p ${OUTPUT_DIR}/bin && \
-    curl -fSL -o ${OUTPUT_DIR}/bin/kube-apiserver "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${DEBIAN_ARCH}/kube-apiserver" && \
-    curl -fSL -o ${OUTPUT_DIR}/bin/kube-controller-manager "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${DEBIAN_ARCH}/kube-controller-manager" && \
-    curl -fSL -o ${OUTPUT_DIR}/bin/kube-scheduler "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${DEBIAN_ARCH}/kube-scheduler" && \
+    ## curl -fSL -o ${OUTPUT_DIR}/bin/kube-apiserver "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${DEBIAN_ARCH}/kube-apiserver" && \
+    ## curl -fSL -o ${OUTPUT_DIR}/bin/kube-controller-manager "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${DEBIAN_ARCH}/kube-controller-manager" && \
+    ## curl -fSL -o ${OUTPUT_DIR}/bin/kube-scheduler "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${DEBIAN_ARCH}/kube-scheduler" && \
     curl -fSL -o ${OUTPUT_DIR}/bin/kubelet "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${DEBIAN_ARCH}/kubelet" && \
     curl -fSL -o ${OUTPUT_DIR}/bin/kubectl "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${DEBIAN_ARCH}/kubectl" && \
-    chmod +x ${OUTPUT_DIR}/bin/kube-apiserver && \
-    chmod +x ${OUTPUT_DIR}/bin/kube-controller-manager && \
-    chmod +x ${OUTPUT_DIR}/bin/kube-scheduler && \
-    chmod +x ${OUTPUT_DIR}/bin/kubelet && \
-    chmod +x ${OUTPUT_DIR}/bin/kubectl
+    curl -fSL -o ${OUTPUT_DIR}/crictl-${KUBERNETES_VERSION}-linux-${DEBIAN_ARCH}.tar.gz "https://github.com/kubernetes-sigs/cri-tools/releases/download/${KUBERNETES_VERSION}/crictl-${KUBERNETES_VERSION}-linux-${DEBIAN_ARCH}.tar.gz" && \
+    tar -xzf ${OUTPUT_DIR}/crictl-${KUBERNETES_VERSION}-linux-${DEBIAN_ARCH}.tar.gz -C ${OUTPUT_DIR}/bin/ && \
+    ## chmod +x ${OUTPUT_DIR}/bin/kube-apiserver && \
+    ## chmod +x ${OUTPUT_DIR}/bin/kube-controller-manager && \
+    ## chmod +x ${OUTPUT_DIR}/bin/kube-scheduler && \
+    chmod +x ${OUTPUT_DIR}/bin/*
 
 # === Base rootfs builder with tools installed ===
 # This stage installs mmdebstrap and squashfs-tools for building the root filesystems
@@ -179,26 +189,34 @@ RUN --security=insecure \
 FROM target-debstrap AS target-configure
 COPY /target/overlay-base/ ${ROOTFS_DIR}/
 COPY /target/overlay-whistle/ ${ROOTFS_DIR}/
-COPY /target/overlay-k3s/ ${ROOTFS_DIR}/
-COPY --from=k3s-download ${OUTPUT_DIR}/bin/ ${ROOTFS_DIR}/usr/local/bin/
-COPY --from=k3s-download ${OUTPUT_DIR}/sbin/ ${ROOTFS_DIR}/usr/local/sbin/
-COPY --from=k3s-download ${OUTPUT_DIR}/cni/ ${ROOTFS_DIR}/opt/cni/bin/
-#COPY --from=kubernetes-download ${OUTPUT_DIR}/bin/ ${ROOTFS_DIR}/usr/local/bin/
+COPY /target/overlay-containerd/ ${ROOTFS_DIR}/
+COPY /target/overlay-kubernetes/ ${ROOTFS_DIR}/
+COPY --from=containerd-download ${OUTPUT_DIR}/bin/ ${ROOTFS_DIR}/usr/local/bin/
+COPY --from=containerd-download ${OUTPUT_DIR}/sbin/ ${ROOTFS_DIR}/usr/local/sbin/
+COPY --from=containerd-download ${OUTPUT_DIR}/cni/ ${ROOTFS_DIR}/opt/cni/bin/
+COPY --from=kubernetes-download ${OUTPUT_DIR}/bin/ ${ROOTFS_DIR}/usr/local/bin/
 #COPY --from=k3s-download ${OUTPUT_DIR}/k3s-airgap-images-${DEBIAN_ARCH}.tar.gz ${ROOTFS_DIR}/var/lib/rancher/k3s/agent/images/
 COPY /target/configure-chroot.sh ${ROOTFS_DIR}/configure-chroot.sh
-COPY /target/scripts/configure-k3s.sh ${ROOTFS_DIR}/configure-k3s.sh
+COPY /target/scripts/configure-containerd.sh ${ROOTFS_DIR}/configure-containerd.sh
+COPY /target/scripts/configure-kubernetes.sh ${ROOTFS_DIR}/configure-kubernetes.sh
 #COPY /target/scripts/configure-kubernetes.sh ${ROOTFS_DIR}/configure-kubernetes.sh
 COPY /scripts/mount-chroot.sh /scripts/mount-chroot.sh
 COPY /scripts/umount-chroot.sh /scripts/umount-chroot.sh
+COPY /target/scripts/generate-certs.sh /scripts/generate-certs.sh
 RUN --security=insecure <<EOFDOCKER
 set -eux
 echo "=== Configuring TARGET rootfs ==="
 /scripts/mount-chroot.sh
 chroot ${ROOTFS_DIR} /configure-chroot.sh
-chroot ${ROOTFS_DIR} /configure-k3s.sh
+chroot ${ROOTFS_DIR} /configure-containerd.sh
+chroot ${ROOTFS_DIR} /configure-kubernetes.sh
 /scripts/umount-chroot.sh
 # Final cleanup of the rootfs
 rm -f ${ROOTFS_DIR}/configure-chroot.sh
+
+# Generate k8s certificates
+/scripts/generate-certs.sh ${ROOTFS_DIR}
+
 EOFDOCKER
 
 # === Build the target squashfs ===

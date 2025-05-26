@@ -1,0 +1,97 @@
+version = 2
+root = "/var/lib/containerd"
+state = "/run/containerd"
+
+[grpc]
+  address = "/run/containerd/containerd.sock"
+  max_recv_message_size = 16777216
+  max_send_message_size = 16777216
+
+[plugins]
+  [plugins."io.containerd.grpc.v1.cri"]
+    disable_tcp_service = true
+    stream_server_address = "127.0.0.1"
+    stream_server_port = "0"
+    enable_selinux = false
+    enable_tls_streaming = false
+    ignore_image_defined_volumes = false
+    max_container_log_line_size = 16384
+    disable_cgroup = false
+    disable_apparmor = false
+    restrict_oom_score_adj = false
+    max_concurrent_downloads = 3
+    disable_proc_mount = false
+    unset_seccomp_profile = ""
+    tolerate_missing_hugetlb_controller = true
+    disable_hugetlb_controller = true
+    ignore_rdt_not_enabled_errors = false
+    
+    [plugins."io.containerd.grpc.v1.cri".containerd]
+      snapshotter = "overlayfs"
+      default_runtime_name = "runc"
+      no_pivot = false
+      disable_snapshot_annotations = true
+      discard_unpacked_layers = false
+      
+      [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
+        [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+          runtime_type = "io.containerd.runc.v2"
+          runtime_engine = ""
+          runtime_root = ""
+          privileged_without_host_devices = false
+          base_runtime_spec = ""
+          
+          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+            SystemdCgroup = true
+
+    [plugins."io.containerd.grpc.v1.cri".cni]
+      bin_dir = "/opt/cni/bin"
+      conf_dir = "/etc/cni/net.d"
+      max_conf_num = 1
+      conf_template = ""
+
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = ""
+
+      [plugins."io.containerd.grpc.v1.cri".registry.auths]
+
+      [plugins."io.containerd.grpc.v1.cri".registry.configs]
+
+      [plugins."io.containerd.grpc.v1.cri".registry.headers]
+
+      [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
+
+    [plugins."io.containerd.grpc.v1.cri".image_decryption]
+      key_model = ""
+
+    [plugins."io.containerd.grpc.v1.cri".x509_key_pair_streaming]
+      tls_cert_file = ""
+      tls_private_key_file = ""
+
+  [plugins."io.containerd.internal.v1.opt"]
+    path = "/opt/containerd"
+
+  [plugins."io.containerd.log.v1.file"]
+    path = "/var/log/containerd.log"
+    max_size = 10485760  # 10MB
+    max_files = 3
+    compress = true
+
+  [plugins."io.containerd.runtime.v1.linux"]
+    shim = "containerd-shim"
+    runtime = "runc"
+    runtime_root = ""
+    no_shim = false
+    shim_debug = false
+
+  [plugins."io.containerd.runtime.v2.task"]
+    platforms = ["linux/amd64"]
+
+  [plugins."io.containerd.service.v1.diff-service"]
+    default = ["walking"]
+
+  [plugins."io.containerd.snapshotter.v1.devmapper"]
+    root_path = ""
+    pool_name = ""
+    base_image_size = ""
+    async_remove = false

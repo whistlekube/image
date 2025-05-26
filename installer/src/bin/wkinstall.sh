@@ -81,9 +81,9 @@ install_boot_files
 echo "=== Copying files to root partition ==="
 
 # Write the persistence.conf file
-mkdir -p "${WKINSTALL_ROOT_MNT}/bind/var/lib/rancher/k3s"
+mkdir -p "${WKINSTALL_ROOT_MNT}/bind/var/lib/containerd"
 cat <<EOF > "${WKINSTALL_ROOT_MNT}/persistence.conf"
-/var/lib/rancher/k3s bind,source=bind/var/lib/rancher/k3s
+/var/lib/containerd bind,source=bind/var/lib/containerd
 / union,source=overlayfs
 EOF
 

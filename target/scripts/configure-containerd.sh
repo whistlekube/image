@@ -4,12 +4,11 @@
 
 set -euxo pipefail
 
-# Install kubernetes
-mkdir -p /etc/kubernetes/pki/etcd
-mkdir -p /etc/kubernetes/manifests
-mkdir -p /var/lib/kubelet
-mkdir -p /var/lib/kubelet/pki
-systemctl enable kubelet
+# Install  containerd
+mkdir -p /var/lib/containerd
+mkdir -p /etc/cni/net.d
+mkdir -p /etc/containerd
+systemctl enable containerd
 
 ## # Link base CNI plugins to where k3s expects
 ## mkdir -p /opt/cni/bin

@@ -1,0 +1,28 @@
+# Project: Whistlekube linux
+This is a project that creates a new linux distro.
+It uses mmdebstrap to generate a debian based system.
+The installed system uses a read only squashfs root filesystem with persistent overlays.
+The build is based on docker containers using docker buildx. 
+
+Whistlekube is a modern router/firewall os built on kubernetes.
+The base os is minimal and just enough to run containerd and kubelet, which then starts everything else in containers.
+
+This is currently in the prototype phase, testing out what stack works best.
+
+## Current tech stack
+- Build tools: docker, buildx, make, buildkit, mmdebstrap
+- Scripting/config: Bash, systemd, yaml
+- OS: linux, mkinitramfs, systemd-boot, efi, iso
+- Containers: kubernetes, containerd, kubelet, cni, k8s controller
+
+## Architectual decisions
+- Use Debian as the base os due to large compatibility and stability
+- Containerize as much as possible to keep the base system minimal for size and security.
+- Be minimal on resources as much as possible.
+We likely have to use the core kubernetes images/binaries for api-server, kubelet, controller-manager, etc. due to the need to control the minimal system and run most things in containers.
+These should be run as minimally as possible just like the rest of the system.
+The target system should be very minimal (eventually, there might be some debug tools currently)
+
+## Important files to review
+- `README.md` - The readme
+

@@ -1,0 +1,25 @@
+[Unit]
+Description=kubelet: The Kubernetes Node Agent
+Documentation=https://kubernetes.io/docs/home/
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/kubelet \
+    --config=/var/lib/kubelet/config.yaml \
+    --container-runtime-endpoint=unix:///run/containerd/containerd.sock \
+    --kubeconfig=/etc/kubernetes/kubelet.conf \
+    --pod-manifest-path=/etc/kubernetes/manifests \
+    --node-ip=10.0.2.17 \
+    --hostname-override=localhost \
+    --cgroup-driver=systemd \
+    --cluster-dns=10.96.0.10 \
+    --fail-swap-on=false \
+    --register-node=true \
+    --v=2
+Restart=always
+StartLimitInterval=0
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
